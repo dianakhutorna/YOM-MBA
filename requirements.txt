@@ -1,0 +1,4 @@
+zenml
+zenml[server]
+pandas
+numpy
