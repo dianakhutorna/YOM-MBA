@@ -1,0 +1,20 @@
+event_id,user_id,timestamp,event_type,variant,bundle_id,revenue
+1,101,2025-01-10 10:00:00,recommendation,A,501,
+2,101,2025-01-10 10:00:05,click,A,501,
+3,101,2025-01-10 10:00:30,purchase,A,501,29.99
+
+4,102,2025-01-10 11:15:00,recommendation,B,503,
+5,102,2025-01-10 11:15:07,click,B,503,
+6,102,2025-01-10 11:15:40,purchase,B,503,24.99
+
+7,103,2025-01-10 11:30:00,recommendation,A,501,
+8,103,2025-01-10 11:30:10,click,A,501,
+
+9,104,2025-01-10 11:35:00,recommendation,B,502,
+# kein Klick, kein Kauf
+
+10,105,2025-01-10 12:00:00,recommendation,A,504,
+11,105,2025-01-10 12:00:05,click,A,504,
+
+12,106,2025-01-10 12:10:00,recommendation,B,503,
+13,106,2025-01-10 12:10:45,purchase,B,503,24.99
