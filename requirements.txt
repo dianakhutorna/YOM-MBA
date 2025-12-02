@@ -1,4 +1,7 @@
-zenml
-zenml[server]
 pandas
 numpy
+scikit-learn
+pymongo[srv]==3.11
+matplotlib
+zenml
+ipykernel
