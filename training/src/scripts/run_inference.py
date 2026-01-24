@@ -12,10 +12,6 @@ from training.src.steps.build_feature_table import build_feature_table
 from training.src.steps.add_product_features import add_product_features
 from training.src.steps.add_kiosk_features import add_kiosk_history_features
 
-
-
-
-
 # ==========================
 # Config
 # ==========================
@@ -37,6 +33,7 @@ FEATURE_COLS = [
     "support",
     "confidence",
     "lift",
+    "cosine_sim",
     "same_category",
     "kiosk_product_cnt",
     "kiosk_bought_candidate_before",
@@ -97,13 +94,12 @@ def main():
     # ---------- final top-N ----------
     final = (
         scored
-        .sort("score", descending=True)
-        .group_by(["kiosk_id", "anchor_product_id"])
+        .sort(["kiosk_id", "anchor_product_id", "score"], descending=[False, False, True])
+        .group_by(["kiosk_id", "anchor_product_id"], maintain_order=True)
         .head(FINAL_N)
-        .with_columns(
-            pl.col("score").round(6)
-        )
+        .with_columns(pl.col("score").round(6))
     )
+
 
     print(f"[INFO] Final inference result shape: {final.shape}")
 

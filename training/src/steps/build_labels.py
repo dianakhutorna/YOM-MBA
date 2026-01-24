@@ -1,4 +1,3 @@
-from __future__ import annotations
 import polars as pl
 
 
@@ -7,46 +6,53 @@ def build_labels(
     test_orders: pl.DataFrame,
 ) -> pl.DataFrame:
     """
-    Add binary labels to feature table using test orders.
+    Build anchor-based labels for ranking.
 
-    Label = 1 if candidate_product was bought by kiosk in test period.
+    Label = 1 if anchor and candidate were bought together
+    in the same basket by the same kiosk in the test period.
     """
 
-    print("[INFO] Building labels")
-
-    # --------------------------------------
-    # 1. Extract test purchases per kiosk
-    # --------------------------------------
-
-    test_purchases = (
+    # 1. Build baskets from test orders
+    test_baskets = (
         test_orders
-        .select(["kiosk_id", "product_id"])
-        .unique()
-        .with_columns(pl.lit(1).alias("label"))
-        .rename({"product_id": "candidate_product_id"})
+        .group_by(["kiosk_id", "order_id"])
+        .agg(pl.col("product_id").unique().alias("products"))
+        .filter(pl.col("products").list.len() > 1)
     )
 
-    print(f"[INFO] Test purchases: {test_purchases.shape}")
+    # 2. Generate anchor–candidate pairs from test baskets
+    test_pairs = (
+        test_baskets
+        .select(["kiosk_id", "products"])
+        .explode("products")
+        .rename({"products": "anchor_product_id"})
+        .join(
+            test_baskets
+            .select(["kiosk_id", "products"])
+            .explode("products")
+            .rename({"products": "candidate_product_id"}),
+            on="kiosk_id",
+        )
+        .filter(pl.col("anchor_product_id") != pl.col("candidate_product_id"))
+        .select(
+            "kiosk_id",
+            "anchor_product_id",
+            "candidate_product_id",
+        )
+        .unique()
+        .with_columns(pl.lit(1).alias("label"))
+    )
 
-    # --------------------------------------
-    # 2. Join with feature table
-    # --------------------------------------
-
+    # 3. Join with feature table
     labeled = (
         feature_table
         .join(
-            test_purchases,
-            on=["kiosk_id", "candidate_product_id"],
+            test_pairs,
+            on=["kiosk_id", "anchor_product_id", "candidate_product_id"],
             how="left",
         )
-        .with_columns(
-            pl.col("label").fill_null(0)
-        )
-    )
-
-    print(
-        "[INFO] Label distribution:\n",
-        labeled.select(pl.col("label").value_counts())
+        .with_columns(pl.col("label").fill_null(0).cast(pl.Int8))
     )
 
     return labeled
+

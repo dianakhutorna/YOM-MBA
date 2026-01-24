@@ -7,116 +7,119 @@ def generate_candidates(
     min_cooc: int = 2,
 ) -> pl.DataFrame:
     """
-    Generate candidate products using co-occurrence + association metrics.
+    Generate anchor-candidate pairs from baskets and compute
+    co-occurrence-based metrics + cosine similarity.
 
-    Output schema:
-    - anchor_product_id
-    - candidate_product_id
-    - cooc_count
-    - anchor_count
-    - candidate_count
-    - support
-    - confidence
-    - lift
+    baskets columns:
+    - kiosk_id
+    - order_id
+    - products (List[str])
     """
 
-    print(f"[INFO] Generating candidates from baskets: {baskets.shape}")
-
-    # --------------------------------------------------
-    # 0. Pre-compute basic stats
-    # --------------------------------------------------
-
-    n_baskets = baskets.height
-
-    # How often each product appears in baskets
-    product_counts = (
+    # ------------------------------------------------------------------
+    # 1. Explode baskets → (order_id, product_id)
+    # ------------------------------------------------------------------
+    exploded = (
         baskets
+        .select(["order_id", "products"])
         .explode("products")
-        .group_by("products")
-        .agg(pl.count().alias("product_count"))
         .rename({"products": "product_id"})
     )
 
-    # --------------------------------------------------
-    # 1. Build co-occurring product pairs
-    # --------------------------------------------------
-
-    exploded = baskets.explode("products")
-
-    pairs = exploded.join(
-        exploded,
-        on=["kiosk_id", "order_id"],
-        how="inner",
-        suffix="_candidate"
-    ).filter(
-        pl.col("products") != pl.col("products_candidate")
+    # ------------------------------------------------------------------
+    # 2. Product frequencies (global)
+    # ------------------------------------------------------------------
+    product_counts = (
+        exploded
+        .group_by("product_id")
+        .agg(pl.count().alias("product_count"))
     )
 
-    # --------------------------------------------------
-    # 2. Co-occurrence counts
-    # --------------------------------------------------
+    total_baskets = baskets.height
 
-    candidates = (
+    # ------------------------------------------------------------------
+    # 3. Anchor–candidate pairs INSIDE THE SAME BASKET
+    # ------------------------------------------------------------------
+    pairs = (
+        exploded
+        .join(
+            exploded,
+            on="order_id",
+            how="inner",
+        )
+        .rename({
+            "product_id": "anchor_product_id",
+            "product_id_right": "candidate_product_id",
+        })
+        .filter(pl.col("anchor_product_id") != pl.col("candidate_product_id"))
+    )
+
+    # ------------------------------------------------------------------
+    # 4. Co-occurrence counts
+    # ------------------------------------------------------------------
+    cooc = (
         pairs
-        .group_by([
-            pl.col("products").alias("anchor_product_id"),
-            pl.col("products_candidate").alias("candidate_product_id"),
-        ])
+        .group_by(["anchor_product_id", "candidate_product_id"])
         .agg(pl.count().alias("cooc_count"))
         .filter(pl.col("cooc_count") >= min_cooc)
     )
 
-    # --------------------------------------------------
-    # 3. Join product frequencies
-    # --------------------------------------------------
-
-    candidates = candidates.join(
-        product_counts.rename({
-            "product_id": "anchor_product_id",
-            "product_count": "anchor_count",
-        }),
-        on="anchor_product_id",
-        how="left"
+    # ------------------------------------------------------------------
+    # 5. Join product frequencies
+    # ------------------------------------------------------------------
+    cooc = (
+        cooc
+        .join(
+            product_counts.rename({
+                "product_id": "anchor_product_id",
+                "product_count": "anchor_count",
+            }),
+            on="anchor_product_id",
+            how="left",
+        )
+        .join(
+            product_counts.rename({
+                "product_id": "candidate_product_id",
+                "product_count": "candidate_count",
+            }),
+            on="candidate_product_id",
+            how="left",
+        )
     )
 
-    candidates = candidates.join(
-        product_counts.rename({
-            "product_id": "candidate_product_id",
-            "product_count": "candidate_count",
-        }),
-        on="candidate_product_id",
-        how="left"
-    )
+    # ------------------------------------------------------------------
+    # 6. MBA metrics + cosine similarity
+    # ------------------------------------------------------------------
+    cooc = cooc.with_columns([
+        # support
+        (pl.col("cooc_count") / total_baskets).alias("support"),
 
-    # --------------------------------------------------
-    # 4. Association metrics
-    # --------------------------------------------------
-
-    candidates = candidates.with_columns([
-        # support(A,B)
-        (pl.col("cooc_count") / pl.lit(n_baskets)).alias("support"),
-
-        # confidence(A -> B)
+        # confidence P(candidate | anchor)
         (pl.col("cooc_count") / pl.col("anchor_count")).alias("confidence"),
 
-        # lift(A,B)
+        # lift
         (
-            pl.col("cooc_count") * pl.lit(n_baskets)
-            / (pl.col("anchor_count") * pl.col("candidate_count"))
+            (pl.col("cooc_count") / total_baskets) /
+            (
+                (pl.col("anchor_count") / total_baskets) *
+                (pl.col("candidate_count") / total_baskets)
+            )
         ).alias("lift"),
+
+        # cosine similarity
+        pl.when(
+            (pl.col("anchor_count") > 0) & (pl.col("candidate_count") > 0)
+        )
+        .then(
+            pl.col("cooc_count") /
+            (pl.col("anchor_count") * pl.col("candidate_count")).sqrt()
+        )
+        .otherwise(0.0)
+        .alias("cosine_sim"),
     ])
 
-    # --------------------------------------------------
-    # 5. Sort for readability / baseline usage
-    # --------------------------------------------------
+    return cooc
 
-    candidates = candidates.sort(
-        ["anchor_product_id", "lift", "cooc_count"],
-        descending=[False, True, True],
-    )
 
-    print(f"[INFO] Generated candidates with metrics: {candidates.shape}")
-
-    return candidates
 
 

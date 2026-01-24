@@ -12,17 +12,26 @@ from training.src.steps.select_top_k_candidates import select_top_k_candidates
 from training.src.steps.build_feature_table import build_feature_table
 from training.src.steps.build_labels import build_labels
 from training.src.steps.add_product_features import add_product_features
-from training.src.steps.rank_eval_at_k import recall_at_k_by_score
 from training.src.steps.add_kiosk_features import add_kiosk_history_features
+from training.src.steps.rank_eval_at_k import (
+    hitrate_at_k_by_score,
+    ndcg_at_k_by_score,
+)
 
 
 
 ORDERS_PATH = Path("training/data/interim/orders_sample.parquet")
 PRODUCTS_PATH = Path("training/data/products_v2.csv")
 
-K = 20
+# K = 100 # Top-K for evaluation and training CHANGED
+
+K_CANDIDATES = 100   # сколько кандидатов генерируем
+K_EVAL = 20          # на каком K считаем recall
+
+
 MIN_COOC = 3
 MIN_LIFT = 2.0
+
 
 
 def _make_group_sizes(df_pd: pd.DataFrame) -> np.ndarray:
@@ -54,7 +63,7 @@ def main():
 
     topk_candidates = select_top_k_candidates(
         candidates,
-        k=K,
+        k=K_CANDIDATES,
         min_lift=MIN_LIFT,
     )
 
@@ -114,6 +123,7 @@ def main():
         "support",
         "confidence",
         "lift",
+        "cosine_sim",
         "same_category",
         "kiosk_product_cnt",
         "kiosk_bought_candidate_before",
@@ -132,11 +142,19 @@ def main():
         ["kiosk_id", "anchor_product_id", "candidate_product_id", "label"] + feature_cols
     ).to_pandas()
 
+    train_pd = train_pd.sort_values(["kiosk_id", "anchor_product_id"], kind="mergesort")
+    valid_pd = valid_pd.sort_values(["kiosk_id", "anchor_product_id"], kind="mergesort")
+
+    group_train = _make_group_sizes(train_pd)
+    group_valid = _make_group_sizes(valid_pd)
+
     X_train = train_pd[feature_cols]
     y_train = train_pd["label"].astype(int)
 
     X_valid = valid_pd[feature_cols]
     y_valid = valid_pd["label"].astype(int)
+
+
 
     group_train = _make_group_sizes(train_pd)
     group_valid = _make_group_sizes(valid_pd)
@@ -168,7 +186,7 @@ def main():
         group=group_train,
         eval_set=[(X_valid, y_valid)],
         eval_group=[group_valid],
-        eval_at=[K]
+        eval_at=[K_EVAL]
     )
 
     # ---------- Score validation set ----------
@@ -176,9 +194,11 @@ def main():
 
     valid_scored = pl.from_pandas(valid_pd)
 
-    recall = recall_at_k_by_score(valid_scored, k=K, score_col="score")
+    hitrate = hitrate_at_k_by_score(valid_scored, k=K_EVAL, score_col="score")
+    ndcg = ndcg_at_k_by_score(valid_scored, k=K_EVAL)
 
-    print(f"\n[FINAL RESULT] LightGBM Recall@{K} = {recall:.4f}")
+    print(f"\n[FINAL RESULT] LightGBM HitRate@{K_EVAL} = {hitrate:.4f}")
+    print(f"[FINAL RESULT] NDCG@{K_EVAL}    = {ndcg:.4f}")
 
     # ---------- Feature importance ----------
     feat_imp = (
