@@ -5,3 +5,7 @@ pymongo[srv]==3.11
 matplotlib
 zenml
 ipykernel
+polars-lts-cpu
+seaborn
+lightgbm
+pyarrow

@@ -30,11 +30,11 @@ Thumbs.db
 *.env
 
 # Data
-data/raw/*
-data/interim/*
-data/tmp/*
+data/
 
 # Output
 outputs/
 results/
 models/
+
+notebooks/
