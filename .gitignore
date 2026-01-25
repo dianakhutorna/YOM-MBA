@@ -38,3 +38,6 @@ results/
 models/
 
 notebooks/
+logs/
+evaluation/
+deployment/

@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 import polars as pl
 import lightgbm as lgb
+import numpy as np
 
+from training.src.steps.add_popularity_features import add_popularity_features
 from training.src.steps.build_baskets import build_baskets
 from training.src.steps.generate_candidates import generate_candidates
 from training.src.steps.select_top_k_candidates import select_top_k_candidates
@@ -11,7 +13,6 @@ from training.src.steps.build_feature_table import build_feature_table
 from training.src.steps.add_product_features import add_product_features
 from training.src.steps.add_kiosk_features import add_kiosk_history_features
 from training.src.steps.encode_categorical_features import encode_channel_one_hot
-from training.src.steps.encode_region_one_hot import encode_region_one_hot
 
 
 # ==========================
@@ -20,6 +21,10 @@ from training.src.steps.encode_region_one_hot import encode_region_one_hot
 ORDERS_PATH = Path("training/data/interim/orders_sample.parquet")
 PRODUCTS_PATH = Path("training/data/products_v2.csv")
 MODEL_PATH = Path("training/models/lgbm_ranker.txt")
+COMMERCES_PATH = Path("training/data/commerces.csv")
+
+commerces = pl.read_csv(COMMERCES_PATH, separator=";")
+
 
 INFERENCE_DATE = pl.datetime(2024, 1, 4)
 
@@ -28,10 +33,13 @@ FINAL_N = 10
 MIN_COOC = 3
 MIN_LIFT = 2.0
 
-FEATURE_COLS_BASE = [
+FEATURE_COLS = [
     "cooc_count",
-    #"cosine_sim",
     "kiosk_product_cnt",
+    #"pop_global",
+    "pop_channel",
+    "pop_region",
+    "pop_store",
     "channel_Mayorista",
     "channel_Ruta",
     "channel_Foodservice",
@@ -80,10 +88,6 @@ def main():
 
     print(f"[INFO] Inference queries: {queries.shape}")
 
-    if queries.is_empty():
-        print("[WARN] No inference queries – exiting.")
-        return
-
     # --------------------------------
     # Candidate generation (GLOBAL)
     # --------------------------------
@@ -111,22 +115,17 @@ def main():
         feature_table=feature_table,
         train_orders=history_orders,
     )
+    feature_table = add_popularity_features(
+        feature_table=feature_table,
+        orders=history_orders,
+        commerces=commerces,
+    )
 
-    # log scale for co-occurrence count
     feature_table = feature_table.with_columns(
-        pl.col("cooc_count").log1p().alias("cooc_count")
+        pl.col("pop_global").log1p().alias("pop_global")
     )
 
     feature_table = encode_channel_one_hot(feature_table)
-    feature_table = encode_region_one_hot(feature_table)
-
-    # --------------------------------
-    # FEATURE COLS (dynamic, like train)
-    # --------------------------------
-    region_cols = [c for c in feature_table.columns if c.startswith("region_")]
-    FEATURE_COLS = FEATURE_COLS_BASE + region_cols
-
-    print(f"[INFO] Using {len(FEATURE_COLS)} features ({len(region_cols)} region)")
 
     # --------------------------------
     # Scoring
@@ -172,5 +171,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 

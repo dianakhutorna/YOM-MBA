@@ -1,33 +1,44 @@
 from __future__ import annotations
 import polars as pl
+from pathlib import Path
+
+COMMERCES_PATH = Path("training/data/commerces.csv")
+
 
 def add_kiosk_history_features(
     feature_table: pl.DataFrame,
     train_orders: pl.DataFrame,
 ) -> pl.DataFrame:
-    """
-    Adds kiosk-specific signals from train period only.
 
-    Requires:
-    - feature_table has: kiosk_id, candidate_product_id
-    - train_orders has: kiosk_id, product_id
-    """
-
-    # 1) how often kiosk bought each product in train
-    kiosk_prod = (
+    # kiosk-level behavioral stats
+    kiosk_stats = (
         train_orders
-        .group_by(["kiosk_id", "product_id"])
-        .agg(pl.len().alias("kiosk_product_cnt"))
-        .rename({"product_id": "candidate_product_id"})
-    )
-
-    out = (
-        feature_table
-        .join(kiosk_prod, on=["kiosk_id", "candidate_product_id"], how="left")
-        .with_columns([
-            pl.col("kiosk_product_cnt").fill_null(0),
-            (pl.col("kiosk_product_cnt") > 0).cast(pl.Int8).alias("kiosk_bought_candidate_before"),
+        .group_by("kiosk_id")
+        .agg([
+            pl.count().alias("kiosk_product_cnt"),
         ])
     )
 
-    return out
+    # load static kiosk info (channel)
+    # load static kiosk info (channel + region)
+    commerces = (
+        pl.read_csv(COMMERCES_PATH, separator=";")
+        .select([
+            pl.col("userid").alias("kiosk_id"),
+            "channel",
+            "region",       # <-- add
+            # "commune",    # optional
+            # "subchannel", # optional
+        ])
+    )
+
+
+    # join everything
+    feature_table = (
+        feature_table
+        .join(kiosk_stats, on="kiosk_id", how="left")
+        .join(commerces, on="kiosk_id", how="left")
+    )
+
+    return feature_table
+

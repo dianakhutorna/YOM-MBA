@@ -18,14 +18,13 @@ from training.src.steps.build_labels import build_labels
 from training.src.steps.add_product_features import add_product_features
 from training.src.steps.add_kiosk_features import add_kiosk_history_features
 from training.src.steps.encode_categorical_features import encode_channel_one_hot
-from training.src.steps.encode_region_one_hot import encode_region_one_hot
-
 from training.src.steps.rank_eval_at_k import (
     hitrate_at_k_by_score,
     ndcg_at_k_by_score,
     positives_at_k_by_score,
     quantity_captured_at_k_by_score,
 )
+from training.src.steps.add_popularity_features import add_popularity_features
 
 
 # ======================================================
@@ -33,6 +32,10 @@ from training.src.steps.rank_eval_at_k import (
 # ======================================================
 ORDERS_PATH = Path("training/data/interim/orders_sample.parquet")
 PRODUCTS_PATH = Path("training/data/products_v2.csv")
+COMMERCES_PATH = Path("training/data/commerces.csv")
+
+commerces = pl.read_csv(COMMERCES_PATH, separator=";")
+
 
 K_CANDIDATES = 100
 K_EVAL = 20
@@ -50,16 +53,22 @@ MAX_NEG_PER_GROUP = 60
 # ======================================================
 # FEATURE SELECTION (ТОЛЬКО ЗДЕСЬ!)
 # ======================================================
-FEATURE_COLS_BASE = [
+FEATURE_COLS = [
     # --- MBA ---
     "cooc_count",
-    #"confidence",
+    # "confidence",
     # "lift",
 
-    #"cosine_sim", # Item–item similarity
+    # "cosine_sim",
 
     # --- kiosk history ---
     "kiosk_product_cnt",
+
+    # popularity
+    #"pop_global",
+    "pop_channel",
+    "pop_region",
+    "pop_store",
 
     # --- channel one-hot ---
     "channel_Mayorista",
@@ -191,8 +200,6 @@ def _to_lgbm_ranking_arrays(df: pl.DataFrame) -> Tuple[pd.DataFrame, np.ndarray,
 # MAIN
 # ======================================================
 def main():
-
-
     setup_logging()
     logging.info("Starting train_ranker (group-aware)")
 
@@ -245,17 +252,17 @@ def main():
     feature_table = add_product_features(feature_table, products)
     feature_table = add_kiosk_history_features(feature_table=feature_table, train_orders=train_orders)
 
-    # log scale for co-occurrence count
-    feature_table = feature_table.with_columns(
-        pl.col("cooc_count").log1p().alias("cooc_count")
+    feature_table = add_popularity_features(
+        feature_table=feature_table,
+        orders=train_orders,
+        commerces=commerces,
     )
 
+
     feature_table = encode_channel_one_hot(feature_table)
-    feature_table = encode_region_one_hot(feature_table)
-    region_cols = [c for c in feature_table.columns if c.startswith("region_")]
-    global FEATURE_COLS
-    FEATURE_COLS = FEATURE_COLS_BASE + region_cols
-    logging.info(f"Using {len(region_cols)} region features")
+
+    # Логарифмируем популярности
+    feature_table = feature_table.with_columns(pl.col("pop_global").log1p().alias("pop_global"))
 
 
     # ---------- Labels ----------
