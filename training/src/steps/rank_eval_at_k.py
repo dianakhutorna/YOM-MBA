@@ -89,7 +89,6 @@ def ndcg_at_k_by_score(
 
     return float(np.mean(ndcgs))
 
-
 def positives_at_k_by_score(
     df: pl.DataFrame,
     k: int = 20,
@@ -135,8 +134,6 @@ def positives_at_k_by_score(
         return 0.0
 
     return float(mean_val)
-
-
 
 def quantity_captured_at_k_by_score(
     df: pl.DataFrame,
@@ -226,7 +223,6 @@ def quantity_captured_at_k_by_score(
         .select(pl.mean("quantity_captured"))
         .item()
     )
-
 
 def quantity_captured_per_order_at_k_by_score(
     df: pl.DataFrame,
@@ -338,3 +334,109 @@ def quantity_captured_per_order_at_k_by_score(
         .select(pl.mean("quantity_per_order"))
         .item()
     )
+
+def recall_at_k_by_score(
+    df: pl.DataFrame,
+    k: int = 20,
+    score_col: str = "score",
+) -> float:
+    """
+    True Recall@K for anchor-based recommendation.
+
+    Recall@K = (# relevant items in top-K) / (total # relevant items)
+    averaged over (kiosk_id, anchor_product_id).
+    """
+
+    # groups with at least one positive
+    valid_groups = (
+        df.filter(pl.col("label") == 1)
+        .select(["kiosk_id", "anchor_product_id"])
+        .unique()
+    )
+
+    df = df.join(
+        valid_groups,
+        on=["kiosk_id", "anchor_product_id"],
+        how="inner",
+    )
+
+    # total relevant items per group
+    total_relevant = (
+        df.filter(pl.col("label") == 1)
+        .group_by(["kiosk_id", "anchor_product_id"])
+        .agg(pl.count().alias("n_relevant"))
+    )
+
+    # top-K per group
+    topk = (
+        df.sort(
+            ["kiosk_id", "anchor_product_id", score_col],
+            descending=[False, False, True],
+        )
+        .group_by(["kiosk_id", "anchor_product_id"])
+        .head(k)
+    )
+
+    # relevant items in top-K
+    relevant_in_topk = (
+        topk.filter(pl.col("label") == 1)
+        .group_by(["kiosk_id", "anchor_product_id"])
+        .agg(pl.count().alias("n_hit"))
+    )
+
+    recall_df = (
+        total_relevant
+        .join(
+            relevant_in_topk,
+            on=["kiosk_id", "anchor_product_id"],
+            how="left",
+        )
+        .with_columns(pl.col("n_hit").fill_null(0))
+        .with_columns(
+            (pl.col("n_hit") / pl.col("n_relevant")).alias("recall")
+        )
+    )
+
+    return float(recall_df.select(pl.mean("recall")).item())
+
+def category_coverage_lift_at_k(
+    df: pl.DataFrame,
+    k: int = 20,
+    score_col: str = "score",
+) -> float:
+    """
+    Category coverage lift at K.
+    """
+
+    # top-K per group
+    topk = (
+        df.sort(
+            ["kiosk_id", "anchor_product_id", score_col],
+            descending=[False, False, True],
+        )
+        .group_by(["kiosk_id", "anchor_product_id"])
+        .head(k)
+    )
+
+    # coverage in recommendations
+    rec_cov = (
+        topk.group_by(["kiosk_id", "anchor_product_id"])
+        .agg(pl.col("candidate_category").n_unique().alias("rec_cov"))
+    )
+
+    # coverage in ground truth
+    gt_cov = (
+        df.filter(pl.col("label") == 1)
+        .group_by(["kiosk_id", "anchor_product_id"])
+        .agg(pl.col("candidate_category").n_unique().alias("gt_cov"))
+    )
+
+    lift = (
+        rec_cov
+        .join(gt_cov, on=["kiosk_id", "anchor_product_id"])
+        .with_columns(
+            (pl.col("rec_cov") / pl.col("gt_cov")).alias("coverage_lift")
+        )
+    )
+
+    return float(lift.select(pl.mean("coverage_lift")).item())

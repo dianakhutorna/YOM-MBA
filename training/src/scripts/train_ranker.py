@@ -19,12 +19,18 @@ from training.src.steps.add_product_features import add_product_features
 from training.src.steps.add_kiosk_features import add_kiosk_history_features
 from training.src.steps.encode_categorical_features import encode_channel_one_hot
 from training.src.steps.encode_region_one_hot import encode_region_one_hot
+from training.src.steps.add_behavioral_features import add_behavioral_features
+from training.src.steps.add_personalization_features import add_personalization_features
+
+
 
 from training.src.steps.rank_eval_at_k import (
     hitrate_at_k_by_score,
     ndcg_at_k_by_score,
     positives_at_k_by_score,
     quantity_captured_at_k_by_score,
+    recall_at_k_by_score,
+    category_coverage_lift_at_k, 
 )
 
 
@@ -52,14 +58,18 @@ MAX_NEG_PER_GROUP = 60
 # ======================================================
 FEATURE_COLS_BASE = [
     # --- MBA ---
-    "cooc_count",
+    #"cooc_count",
     #"confidence",
     # "lift",
 
-    #"cosine_sim", # Item–item similarity
+    "cosine_sim", # Item–item similarity
 
     # --- kiosk history ---
     "kiosk_product_cnt",
+    "pop_store",
+    "kiosk_bought_candidate_before",
+    "anchor_kiosk_frequency",
+    "cand_is_new_for_kiosk",
 
     # --- channel one-hot ---
     "channel_Mayorista",
@@ -244,11 +254,17 @@ def main():
     products = pl.read_csv(PRODUCTS_PATH, separator=";")
     feature_table = add_product_features(feature_table, products)
     feature_table = add_kiosk_history_features(feature_table=feature_table, train_orders=train_orders)
+    feature_table = add_personalization_features(
+        feature_table=feature_table,
+        train_orders=train_orders,
+    )
+
 
     # log scale for co-occurrence count
     feature_table = feature_table.with_columns(
         pl.col("cooc_count").log1p().alias("cooc_count")
     )
+    feature_table = add_behavioral_features(feature_table, train_orders)
 
     feature_table = encode_channel_one_hot(feature_table)
     feature_table = encode_region_one_hot(feature_table)
@@ -349,12 +365,29 @@ def main():
     valid_scored = pl.from_pandas(valid_pdf.drop(columns=["query_id"]))
 
     logging.info(f"[FINAL RESULT] HitRate@{K_EVAL} = {hitrate_at_k_by_score(valid_scored, k=K_EVAL):.4f}")
-    logging.info(f"[FINAL RESULT] NDCG@{K_EVAL}    = {ndcg_at_k_by_score(valid_scored, k=K_EVAL):.4f}")
-    logging.info(f"[FINAL RESULT] Positives@{K_EVAL} = {positives_at_k_by_score(valid_scored, k=K_EVAL):.4f}")
+
+    logging.info(
+        f"[FINAL RESULT] Recall@{K_EVAL} = "
+        f"{recall_at_k_by_score(valid_scored, k=K_EVAL):.4f}"
+    )
+
+    logging.info(f"[FINAL RESULT] NDCG@{K_EVAL} = {ndcg_at_k_by_score(valid_scored, k=K_EVAL):.4f}")
+
+    logging.info(
+        f"[FINAL RESULT] Positives@{K_EVAL} = "
+        f"{positives_at_k_by_score(valid_scored, k=K_EVAL):.4f}"
+    )
+
+    #logging.info(
+    #    f"[FINAL RESULT] CategoryCoverageLift@{K_EVAL} = "
+    #    f"{category_coverage_lift_at_k(valid_scored, k=K_EVAL):.4f}"
+    #)
+
     logging.info(
         f"[FINAL RESULT] QuantityCaptured@{K_EVAL} = "
         f"{quantity_captured_at_k_by_score(valid_scored, test_orders, k=K_EVAL):.4f}"
     )
+
 
     # ---------- Feature importance ----------
     imp = pd.DataFrame(

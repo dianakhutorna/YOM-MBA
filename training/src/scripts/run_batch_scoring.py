@@ -12,6 +12,9 @@ from training.src.steps.add_product_features import add_product_features
 from training.src.steps.add_kiosk_features import add_kiosk_history_features
 from training.src.steps.encode_categorical_features import encode_channel_one_hot
 from training.src.steps.encode_region_one_hot import encode_region_one_hot
+from training.src.steps.add_behavioral_features import add_behavioral_features
+from training.src.steps.add_personalization_features import add_personalization_features
+
 
 
 # ==========================
@@ -29,9 +32,13 @@ MIN_COOC = 3
 MIN_LIFT = 2.0
 
 FEATURE_COLS_BASE = [
-    "cooc_count",
-    #"cosine_sim",
+    #"cooc_count",
+    "cosine_sim",
     "kiosk_product_cnt",
+    "pop_store",
+    "kiosk_bought_candidate_before",
+    "anchor_kiosk_frequency",
+    "cand_is_new_for_kiosk",
     "channel_Mayorista",
     "channel_Ruta",
     "channel_Foodservice",
@@ -116,6 +123,9 @@ def main():
     feature_table = feature_table.with_columns(
         pl.col("cooc_count").log1p().alias("cooc_count")
     )
+    feature_table = add_behavioral_features(feature_table, history_orders)
+    feature_table = add_personalization_features(feature_table=feature_table, train_orders=history_orders)
+
 
     feature_table = encode_channel_one_hot(feature_table)
     feature_table = encode_region_one_hot(feature_table)
