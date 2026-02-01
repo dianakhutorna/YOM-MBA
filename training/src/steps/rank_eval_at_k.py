@@ -440,3 +440,49 @@ def category_coverage_lift_at_k(
     )
 
     return float(lift.select(pl.mean("coverage_lift")).item())
+
+def precision_at_k_by_score(
+    df: pl.DataFrame,
+    k: int = 20,
+    score_col: str = "score",
+) -> float:
+    """
+    Precision@K for anchor-based recommendation.
+
+    Precision@K = (# relevant items in top-K) / K
+    averaged over (kiosk_id, anchor_product_id)
+    """
+
+    # groups with at least one positive
+    valid_groups = (
+        df.filter(pl.col("label") == 1)
+        .select(["kiosk_id", "anchor_product_id"])
+        .unique()
+    )
+
+    df = df.join(
+        valid_groups,
+        on=["kiosk_id", "anchor_product_id"],
+        how="inner",
+    )
+
+    # top-K per group
+    topk = (
+        df.sort(
+            ["kiosk_id", "anchor_product_id", score_col],
+            descending=[False, False, True],
+        )
+        .group_by(["kiosk_id", "anchor_product_id"])
+        .head(k)
+    )
+
+    # count positives in top-K
+    per_group = (
+        topk.group_by(["kiosk_id", "anchor_product_id"])
+        .agg(pl.sum("label").alias("n_hit"))
+        .with_columns(
+            (pl.col("n_hit") / k).alias("precision")
+        )
+    )
+
+    return float(per_group.select(pl.mean("precision")).item())

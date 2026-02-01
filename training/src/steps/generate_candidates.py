@@ -1,5 +1,56 @@
 from __future__ import annotations
+
+import logging
+from typing import Sequence
+
 import polars as pl
+
+LOGGER = logging.getLogger(__name__)
+
+REQUIRED_BASKET_COLS: tuple[str, ...] = (
+    "order_id",
+    "products",
+)
+
+
+def _ensure_columns(df: pl.DataFrame, cols: Sequence[str]) -> None:
+    missing = [c for c in cols if c not in df.columns]
+    if missing:
+        missing_str = ", ".join(missing)
+        raise ValueError(f"Missing required columns: {missing_str}")
+
+
+def _explode_baskets(baskets: pl.DataFrame) -> pl.DataFrame:
+    return (
+        baskets
+        .select(["order_id", "products"])
+        .explode("products")
+        .rename({"products": "product_id"})
+    )
+
+
+def _product_counts(exploded: pl.DataFrame) -> pl.DataFrame:
+    return (
+        exploded
+        .group_by("product_id")
+        .agg(pl.len().alias("product_count"))
+    )
+
+
+def _pair_products(exploded: pl.DataFrame) -> pl.DataFrame:
+    return (
+        exploded
+        .join(
+            exploded,
+            on="order_id",
+            how="inner",
+        )
+        .rename({
+            "product_id": "anchor_product_id",
+            "product_id_right": "candidate_product_id",
+        })
+        .filter(pl.col("anchor_product_id") != pl.col("candidate_product_id"))
+    )
 
 
 def generate_candidates(
@@ -16,43 +67,40 @@ def generate_candidates(
     - products (List[str])
     """
 
+    _ensure_columns(baskets, REQUIRED_BASKET_COLS)
+    if baskets.is_empty():
+        return pl.DataFrame(
+            schema={
+                "anchor_product_id": pl.Utf8,
+                "candidate_product_id": pl.Utf8,
+                "cooc_count": pl.Int64,
+                "anchor_count": pl.Int64,
+                "candidate_count": pl.Int64,
+                "support": pl.Float64,
+                "confidence": pl.Float64,
+                "lift": pl.Float64,
+                "cosine_sim": pl.Float64,
+            }
+        )
+
+    LOGGER.info("Generating candidates from baskets: %s", baskets.shape)
+
     # ------------------------------------------------------------------
     # 1. Explode baskets → (order_id, product_id)
     # ------------------------------------------------------------------
-    exploded = (
-        baskets
-        .select(["order_id", "products"])
-        .explode("products")
-        .rename({"products": "product_id"})
-    )
+    exploded = _explode_baskets(baskets)
 
     # ------------------------------------------------------------------
     # 2. Product frequencies (global)
     # ------------------------------------------------------------------
-    product_counts = (
-        exploded
-        .group_by("product_id")
-        .agg(pl.count().alias("product_count"))
-    )
+    product_counts = _product_counts(exploded)
 
     total_baskets = baskets.height
 
     # ------------------------------------------------------------------
     # 3. Anchor–candidate pairs INSIDE THE SAME BASKET
     # ------------------------------------------------------------------
-    pairs = (
-        exploded
-        .join(
-            exploded,
-            on="order_id",
-            how="inner",
-        )
-        .rename({
-            "product_id": "anchor_product_id",
-            "product_id_right": "candidate_product_id",
-        })
-        .filter(pl.col("anchor_product_id") != pl.col("candidate_product_id"))
-    )
+    pairs = _pair_products(exploded)
 
     # ------------------------------------------------------------------
     # 4. Co-occurrence counts
@@ -60,7 +108,7 @@ def generate_candidates(
     cooc = (
         pairs
         .group_by(["anchor_product_id", "candidate_product_id"])
-        .agg(pl.count().alias("cooc_count"))
+        .agg(pl.len().alias("cooc_count"))
         .filter(pl.col("cooc_count") >= min_cooc)
     )
 
@@ -91,13 +139,8 @@ def generate_candidates(
     # 6. MBA metrics + cosine similarity
     # ------------------------------------------------------------------
     cooc = cooc.with_columns([
-        # support
         (pl.col("cooc_count") / total_baskets).alias("support"),
-
-        # confidence P(candidate | anchor)
         (pl.col("cooc_count") / pl.col("anchor_count")).alias("confidence"),
-
-        # lift
         (
             (pl.col("cooc_count") / total_baskets) /
             (
@@ -105,8 +148,6 @@ def generate_candidates(
                 (pl.col("candidate_count") / total_baskets)
             )
         ).alias("lift"),
-
-        # cosine similarity
         pl.when(
             (pl.col("anchor_count") > 0) & (pl.col("candidate_count") > 0)
         )
@@ -119,7 +160,5 @@ def generate_candidates(
     ])
 
     return cooc
-
-
 
 

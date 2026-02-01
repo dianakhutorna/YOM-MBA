@@ -1,0 +1,24 @@
+split_date: "2024-01-04T00:00:00"
+min_cooc: 3
+min_lift: 2.0
+k_candidates: 100
+k_eval: 20
+train_kiosk_ratio: 0.9
+max_neg_per_group: 60
+orders_path: training/data/interim/orders_sample.parquet
+products_path: training/data/products_v2.csv
+commerces_path: training/data/commerces.csv
+model_path: training/models/lgbm_ranker.txt
+features_path: training/models/lgbm_features.txt
+feature_cols_base:
+  - cosine_sim
+  - kiosk_product_cnt
+  - pop_store
+  - kiosk_bought_candidate_before
+  - anchor_kiosk_frequency
+  - cand_is_new_for_kiosk
+  - channel_Mayorista
+  - channel_Ruta
+  - channel_Foodservice
+  - channel_Distribuidores
+  - channel_Supermercados

@@ -4,11 +4,12 @@ import polars as pl
 import itertools
 import numpy as np
 
+from training.src.paths import INTERIM_DIR
 
 # ===============================
 # CONFIG
 # ===============================
-PREDICTIONS_PATH = "training/data/interim/predictions.parquet"
+PREDICTIONS_PATH = INTERIM_DIR / "predictions.parquet"
 
 N_ANCHORS = 10          # сколько anchor'ов проверяем
 N_KIOSKS = 50           # сколько киосков на anchor

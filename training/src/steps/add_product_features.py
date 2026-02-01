@@ -1,5 +1,28 @@
 from __future__ import annotations
+
+import logging
+from typing import Sequence
+
 import polars as pl
+
+LOGGER = logging.getLogger(__name__)
+
+REQUIRED_FEATURE_COLS: tuple[str, ...] = (
+    "anchor_product_id",
+    "candidate_product_id",
+)
+
+REQUIRED_PRODUCT_COLS: tuple[str, ...] = (
+    "productid",
+    "category",
+)
+
+
+def _ensure_columns(df: pl.DataFrame, cols: Sequence[str]) -> None:
+    missing = [c for c in cols if c not in df.columns]
+    if missing:
+        missing_str = ", ".join(missing)
+        raise ValueError(f"Missing required columns: {missing_str}")
 
 
 def add_product_features(
@@ -13,7 +36,10 @@ def add_product_features(
     - same_category (0/1)
     """
 
-    print("[INFO] Adding product category features")
+    _ensure_columns(features, REQUIRED_FEATURE_COLS)
+    _ensure_columns(products, REQUIRED_PRODUCT_COLS)
+
+    LOGGER.info("Adding product category features")
 
     # Canonical product table
     prod = (
@@ -52,9 +78,7 @@ def add_product_features(
         .alias("same_category")
     )
 
-    print(
-        "[INFO] same_category ratio:",
-        features.select(pl.col("same_category").mean()).item()
-    )
+    ratio = features.select(pl.col("same_category").mean()).item()
+    LOGGER.info("same_category ratio: %s", ratio)
 
     return features

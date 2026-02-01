@@ -1,5 +1,29 @@
 from __future__ import annotations
+
+import logging
+from typing import Sequence
+
 import polars as pl
+
+LOGGER = logging.getLogger(__name__)
+
+REQUIRED_FEATURE_COLS: tuple[str, ...] = (
+    "kiosk_id",
+    "anchor_product_id",
+    "candidate_product_id",
+)
+
+REQUIRED_ORDER_COLS: tuple[str, ...] = (
+    "kiosk_id",
+    "product_id",
+)
+
+
+def _ensure_columns(df: pl.DataFrame, cols: Sequence[str]) -> None:
+    missing = [c for c in cols if c not in df.columns]
+    if missing:
+        missing_str = ", ".join(missing)
+        raise ValueError(f"Missing required columns: {missing_str}")
 
 
 def add_behavioral_features(
@@ -20,7 +44,10 @@ def add_behavioral_features(
         how many times kiosk bought anchor
     """
 
-    print("[INFO] Adding behavioral (kiosk-specific) features")
+    _ensure_columns(feature_table, REQUIRED_FEATURE_COLS)
+    _ensure_columns(train_orders, REQUIRED_ORDER_COLS)
+
+    LOGGER.info("Adding behavioral (kiosk-specific) features")
 
     # ----------------------------------
     # Long orders: kiosk × product
@@ -86,6 +113,6 @@ def add_behavioral_features(
         ]
     )
 
-    print("[INFO] Behavioral features added")
+    LOGGER.info("Behavioral features added")
 
     return ft

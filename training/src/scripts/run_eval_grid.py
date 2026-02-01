@@ -1,6 +1,7 @@
-from pathlib import Path
 import polars as pl
 
+from training.src.io import load_orders_parquet
+from training.src.paths import INTERIM_DIR
 from training.src.steps.select_top_k_candidates import select_top_k_candidates
 from training.src.steps.build_feature_table import build_feature_table
 from training.src.steps.build_labels import build_labels
@@ -10,14 +11,14 @@ from training.src.steps.build_baskets import build_baskets
 from training.src.steps.generate_candidates import generate_candidates
 
 
-ORDERS_PATH = Path("training/data/interim/orders_sample.parquet")
+ORDERS_PATH = INTERIM_DIR / "orders_sample.parquet"
 
 K_VALUES = [5, 10, 20, 50]
 MIN_LIFT_VALUES = [1.5, 2.0, 3.0]
 
 
 def main():
-    orders = pl.read_parquet(ORDERS_PATH)
+    orders = load_orders_parquet(ORDERS_PATH)
 
     orders = orders.with_columns(pl.col("order_dt").cast(pl.Datetime))
 

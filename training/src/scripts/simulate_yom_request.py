@@ -1,28 +1,28 @@
 from __future__ import annotations
 
-from pathlib import Path
 import polars as pl
 
+from training.src.io import load_parquet, load_products_csv
+from training.src.paths import DATA_DIR, INTERIM_DIR
 
 # ===============================
 # CONFIG
 # ===============================
-PREDICTIONS_PATH = Path("training/data/interim/predictions.parquet")
-PRODUCTS_PATH = Path("training/data/products_v2.csv")  # чтобы взять category
+PREDICTIONS_PATH = INTERIM_DIR / "predictions.parquet"
+PRODUCTS_PATH = DATA_DIR / "products_v2.csv"  # чтобы взять category
 
-# ТВОЙ ЗАПРОС
 YOM_REQUEST = {
     "kiosk_id": "30037f531441414d92ac845f7f3e1357",
     "anchor_product_id": "004752-001",
 
-    "included_products": [],                 # форсируем в результат
-    "excluded_products": ["004747-001"],     # удаляем из результата
+    "included_products": [],                 
+    "excluded_products": ["004747-001"],     
 
     # allowed categories
-    "agg_key": None,  # {"Yoghurt", "Jugo", "Queso Maduro"},  # если пусто/None → не фильтруем по категориям
-    "n_group_key": 3,   # максимум товаров на категорию
-    "N_min": 4,
-    "N_max": 10,
+    "agg_key": {"Yoghurt", "Jugo", "Queso Maduro"},  # {"Yoghurt", "Jugo", "Queso Maduro"},  # if empty/None → we use no filter
+    "n_group_key": 3,   # max items per category
+    "N_min": 4, # min items in the bundle
+    "N_max": 10, # max items in the bundle
 }
 
 
@@ -129,7 +129,7 @@ def main():
     req = YOM_REQUEST
 
     print("[INFO] Loading predictions.parquet (NO TRAINING, NO INFERENCE PIPELINE)")
-    preds = pl.read_parquet(PREDICTIONS_PATH)
+    preds = load_parquet(PREDICTIONS_PATH, label="Predictions parquet")
 
     # IMPORTANT: predictions.parquet у тебя уже финальный top-N.
     # Если он был сохранен с FINAL_N=10, ты НЕ сможешь потом получить 50 кандидатов.
@@ -150,7 +150,7 @@ def main():
     print(f"[INFO] Found rows: {df_scored.shape[0]}")
 
     print("[INFO] Loading products_v2.csv for category join")
-    products = pl.read_csv(PRODUCTS_PATH, separator=";")
+    products = load_products_csv(PRODUCTS_PATH)
 
     final = apply_yom_preprocessing(df_scored, products, req)
 

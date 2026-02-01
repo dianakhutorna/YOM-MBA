@@ -1,0 +1,7 @@
+orders_path: training/data/interim/orders_sample.parquet
+products_path: training/data/products_v2.csv
+labeled_out_path: training/data/interim/labeled_features_sample.parquet
+split_date: "2024-01-04T00:00:00"
+min_cooc: 3
+min_lift: 2.0
+top_k: 20

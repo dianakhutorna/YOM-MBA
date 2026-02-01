@@ -1,6 +1,24 @@
 from __future__ import annotations
 
+import logging
+from typing import Sequence
+
 import polars as pl
+
+LOGGER = logging.getLogger(__name__)
+
+REQUIRED_ORDER_COLS: tuple[str, ...] = (
+    "order_id",
+    "kiosk_id",
+    "product_id",
+)
+
+
+def _ensure_columns(df: pl.DataFrame, cols: Sequence[str]) -> None:
+    missing = [c for c in cols if c not in df.columns]
+    if missing:
+        missing_str = ", ".join(missing)
+        raise ValueError(f"Missing required columns: {missing_str}")
 
 
 def build_baskets(
@@ -23,7 +41,9 @@ def build_baskets(
     - products: list[str]
     """
 
-    print(f"[INFO] Building baskets from orders: {orders.shape}")
+    _ensure_columns(orders, REQUIRED_ORDER_COLS)
+
+    LOGGER.info("Building baskets from orders: %s", orders.shape)
 
     baskets = (
         orders
@@ -38,18 +58,15 @@ def build_baskets(
         .filter(pl.col("products").list.len() >= min_items)
     )
 
-    print(f"[INFO] Built baskets: {baskets.shape}")
-    # print(f"[INFO] Avg basket size: "
-    #      f"{baskets.select(pl.col('products').list.len().mean()).item():.2f}")
+    LOGGER.info("Built baskets: %s", baskets.shape)
 
     avg_size = baskets.select(
         pl.col("products").list.len().mean()
     ).item()
 
     if avg_size is not None:
-        print(f"[INFO] Avg basket size: {avg_size:.2f}")
+        LOGGER.info("Avg basket size: %.2f", avg_size)
     else:
-        print("[INFO] Avg basket size: n/a (no baskets)")
-
+        LOGGER.info("Avg basket size: n/a (no baskets)")
 
     return baskets

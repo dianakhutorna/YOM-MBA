@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 import logging
 from typing import Tuple
 
@@ -10,17 +10,16 @@ import polars as pl
 import pandas as pd
 import lightgbm as lgb
 
+from training.src.io import load_commerces_csv, load_orders_parquet, load_products_csv
+from training.src.paths import DATA_DIR, INTERIM_DIR, LOGS_DIR, MODELS_DIR
 from training.src.steps.build_baskets import build_baskets
 from training.src.steps.generate_candidates import generate_candidates
 from training.src.steps.select_top_k_candidates import select_top_k_candidates
 from training.src.steps.build_feature_table import build_feature_table
 from training.src.steps.build_labels import build_labels
-from training.src.steps.add_product_features import add_product_features
-from training.src.steps.add_kiosk_features import add_kiosk_history_features
-from training.src.steps.encode_categorical_features import encode_channel_one_hot
-from training.src.steps.encode_region_one_hot import encode_region_one_hot
-from training.src.steps.add_behavioral_features import add_behavioral_features
-from training.src.steps.add_personalization_features import add_personalization_features
+from training.src.cli import parse_config_args
+from training.src.config import FeatureConfig, load_yaml_config
+from training.src.features import add_all_features
 
 
 
@@ -37,8 +36,11 @@ from training.src.steps.rank_eval_at_k import (
 # ======================================================
 # CONFIG
 # ======================================================
-ORDERS_PATH = Path("training/data/interim/orders_sample.parquet")
-PRODUCTS_PATH = Path("training/data/products_v2.csv")
+ORDERS_PATH = INTERIM_DIR / "orders_sample.parquet"
+PRODUCTS_PATH = DATA_DIR / "products_v2.csv"
+COMMERCES_PATH = DATA_DIR / "commerces.csv"
+FEATURES_CONFIG_PATH = Path("training/configs/features.yaml")
+SCRIPT_CONFIG_PATH = Path("training/configs/train_ranker.yaml")
 
 K_CANDIDATES = 100
 K_EVAL = 20
@@ -85,7 +87,7 @@ BASE_COLS = ["kiosk_id", "anchor_product_id", "candidate_product_id", "label"]
 # LOGGING
 # ======================================================
 def setup_logging():
-    logs_dir = Path("training/logs")
+    logs_dir = LOGS_DIR
     logs_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_path = logs_dir / f"train_ranker_{ts}.log"
@@ -201,13 +203,33 @@ def _to_lgbm_ranking_arrays(df: pl.DataFrame) -> Tuple[pd.DataFrame, np.ndarray,
 # MAIN
 # ======================================================
 def main():
+    config_path, features_path = parse_config_args(
+        default_config=SCRIPT_CONFIG_PATH,
+        default_features_config=FEATURES_CONFIG_PATH,
+        description="Train LightGBM ranker",
+    )
+    cfg = load_yaml_config(config_path) if config_path.exists() else {}
+    global SPLIT_DATE, MIN_COOC, MIN_LIFT, K_CANDIDATES, K_EVAL, TRAIN_KIOSK_RATIO, MAX_NEG_PER_GROUP, FEATURE_COLS_BASE
+    if "split_date" in cfg:
+        SPLIT_DATE = datetime.fromisoformat(cfg["split_date"])
+    MIN_COOC = int(cfg.get("min_cooc", MIN_COOC))
+    MIN_LIFT = float(cfg.get("min_lift", MIN_LIFT))
+    K_CANDIDATES = int(cfg.get("k_candidates", K_CANDIDATES))
+    K_EVAL = int(cfg.get("k_eval", K_EVAL))
+    TRAIN_KIOSK_RATIO = float(cfg.get("train_kiosk_ratio", TRAIN_KIOSK_RATIO))
+    MAX_NEG_PER_GROUP = int(cfg.get("max_neg_per_group", MAX_NEG_PER_GROUP))
+    if "feature_cols_base" in cfg:
+        FEATURE_COLS_BASE = list(cfg["feature_cols_base"])
 
 
     setup_logging()
     logging.info("Starting train_ranker (group-aware)")
 
     # ---------- Load orders ----------
-    orders = pl.read_parquet(ORDERS_PATH).with_columns(pl.col("order_dt").cast(pl.Datetime))
+    orders_path = Path(cfg.get("orders_path", ORDERS_PATH))
+    orders = load_orders_parquet(orders_path).with_columns(
+        pl.col("order_dt").cast(pl.Datetime)
+    )
 
     SPLIT_DATE = pl.datetime(2024, 1, 4)
     train_orders = orders.filter(pl.col("order_dt") < SPLIT_DATE)
@@ -251,12 +273,22 @@ def main():
 
     logging.info(f"Feature table shape: {feature_table.shape}")
 
-    products = pl.read_csv(PRODUCTS_PATH, separator=";")
-    feature_table = add_product_features(feature_table, products)
-    feature_table = add_kiosk_history_features(feature_table=feature_table, train_orders=train_orders)
-    feature_table = add_personalization_features(
-        feature_table=feature_table,
-        train_orders=train_orders,
+    orders_path = Path(cfg.get("orders_path", ORDERS_PATH))
+    products_path = Path(cfg.get("products_path", PRODUCTS_PATH))
+    commerces_path = Path(cfg.get("commerces_path", COMMERCES_PATH))
+    products = load_products_csv(products_path)
+    commerces = load_commerces_csv(commerces_path)
+    feature_config = (
+        FeatureConfig.from_yaml(features_path)
+        if features_path and features_path.exists()
+        else FeatureConfig()
+    )
+    feature_table = add_all_features(
+        feature_table,
+        orders=train_orders,
+        products=products,
+        commerces=commerces,
+        config=feature_config,
     )
 
 
@@ -264,10 +296,7 @@ def main():
     feature_table = feature_table.with_columns(
         pl.col("cooc_count").log1p().alias("cooc_count")
     )
-    feature_table = add_behavioral_features(feature_table, train_orders)
-
-    feature_table = encode_channel_one_hot(feature_table)
-    feature_table = encode_region_one_hot(feature_table)
+    # Behavioral + encodings are applied in add_all_features based on config.
     region_cols = [c for c in feature_table.columns if c.startswith("region_")]
     global FEATURE_COLS
     FEATURE_COLS = FEATURE_COLS_BASE + region_cols
@@ -397,7 +426,7 @@ def main():
     logging.info(imp)
 
     # ---------- Save model ----------
-    model_path = Path("training/models/lgbm_ranker.txt")
+    model_path = Path(cfg.get("model_path", MODELS_DIR / "lgbm_ranker.txt"))
     model_path.parent.mkdir(parents=True, exist_ok=True)
     booster.save_model(str(model_path))
     logging.info(f"Model saved to {model_path}")

@@ -1,5 +1,10 @@
 from __future__ import annotations
+
+import logging
+
 import polars as pl
+
+LOGGER = logging.getLogger(__name__)
 
 
 def encode_channel_one_hot(
@@ -21,6 +26,8 @@ def encode_channel_one_hot(
 
     if channel_col not in df.columns:
         return df
+
+    LOGGER.info("One-hot encoding %s", channel_col)
 
     # get unique channel values
     channels = (

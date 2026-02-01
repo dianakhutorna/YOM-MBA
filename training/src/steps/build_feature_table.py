@@ -1,5 +1,33 @@
 from __future__ import annotations
+
+import logging
+from typing import Sequence
+
 import polars as pl
+
+LOGGER = logging.getLogger(__name__)
+
+REQUIRED_TOPK_COLS: tuple[str, ...] = (
+    "anchor_product_id",
+    "candidate_product_id",
+)
+
+REQUIRED_BASKET_COLS: tuple[str, ...] = (
+    "kiosk_id",
+    "products",
+)
+
+REQUIRED_QUERY_COLS: tuple[str, ...] = (
+    "kiosk_id",
+    "anchor_product_id",
+)
+
+
+def _ensure_columns(df: pl.DataFrame, cols: Sequence[str]) -> None:
+    missing = [c for c in cols if c not in df.columns]
+    if missing:
+        missing_str = ", ".join(missing)
+        raise ValueError(f"Missing required columns: {missing_str}")
 
 
 def build_feature_table(
@@ -34,7 +62,13 @@ def build_feature_table(
         Feature table with one row per (kiosk, anchor, candidate).
     """
 
-    print("[INFO] Building feature table")
+    _ensure_columns(topk_candidates, REQUIRED_TOPK_COLS)
+    if queries is None:
+        _ensure_columns(baskets, REQUIRED_BASKET_COLS)
+    else:
+        _ensure_columns(queries, REQUIRED_QUERY_COLS)
+
+    LOGGER.info("Building feature table")
 
     # --------------------------------------
     # 1. Define (kiosk, anchor_product) pairs
@@ -45,7 +79,7 @@ def build_feature_table(
             .select(["kiosk_id", "anchor_product_id"])
             .unique()
         )
-        print("[INFO] Using explicit queries")
+        LOGGER.info("Using explicit queries")
     else:
         kiosk_anchors = (
             baskets
@@ -54,9 +88,9 @@ def build_feature_table(
             .rename({"products": "anchor_product_id"})
             .unique()
         )
-        print("[INFO] Using kiosk-anchor pairs from baskets")
+        LOGGER.info("Using kiosk-anchor pairs from baskets")
 
-    print(f"[INFO] Kiosk-anchor pairs: {kiosk_anchors.shape}")
+    LOGGER.info("Kiosk-anchor pairs: %s", kiosk_anchors.shape)
 
     # --------------------------------------
     # 2. Join with top-K candidates (GLOBAL)
@@ -67,7 +101,6 @@ def build_feature_table(
         how="inner",
     )
 
-    print(f"[INFO] Feature table shape: {feature_table.shape}")
+    LOGGER.info("Feature table shape: %s", feature_table.shape)
 
     return feature_table
-

@@ -1,13 +1,12 @@
 from __future__ import annotations
-import polars as pl
-from pathlib import Path
 
-COMMERCES_PATH = Path("training/data/commerces.csv")
+import polars as pl
 
 
 def add_kiosk_history_features(
     feature_table: pl.DataFrame,
     train_orders: pl.DataFrame,
+    commerces: pl.DataFrame,
 ) -> pl.DataFrame:
 
     # kiosk-level behavioral stats
@@ -19,18 +18,12 @@ def add_kiosk_history_features(
         ])
     )
 
-    # load static kiosk info (channel)
     # load static kiosk info (channel + region)
-    commerces = (
-        pl.read_csv(COMMERCES_PATH, separator=";")
-        .select([
-            pl.col("userid").alias("kiosk_id"),
-            "channel",
-            "region",       # <-- add
-            # "commune",    # optional
-            # "subchannel", # optional
-        ])
-    )
+    commerces = commerces.select([
+        pl.col("userid").alias("kiosk_id"),
+        "channel",
+        "region",
+    ])
 
 
     # join everything
@@ -41,4 +34,3 @@ def add_kiosk_history_features(
     )
 
     return feature_table
-

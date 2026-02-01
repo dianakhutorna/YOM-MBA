@@ -9,3 +9,6 @@ polars-lts-cpu
 seaborn
 lightgbm
 pyarrow
+xgboost
+pytest
+pyyaml

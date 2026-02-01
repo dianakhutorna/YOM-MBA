@@ -1,5 +1,28 @@
 from __future__ import annotations
+
+import logging
+from typing import Sequence
+
 import polars as pl
+
+LOGGER = logging.getLogger(__name__)
+
+REQUIRED_FEATURE_COLS: tuple[str, ...] = (
+    "kiosk_id",
+    "candidate_product_id",
+)
+
+REQUIRED_ORDER_COLS: tuple[str, ...] = (
+    "kiosk_id",
+    "product_id",
+)
+
+
+def _ensure_columns(df: pl.DataFrame, cols: Sequence[str]) -> None:
+    missing = [c for c in cols if c not in df.columns]
+    if missing:
+        missing_str = ", ".join(missing)
+        raise ValueError(f"Missing required columns: {missing_str}")
 
 
 def add_personalization_features(
@@ -12,7 +35,10 @@ def add_personalization_features(
     - anchor_kiosk_frequency
     """
 
-    print("[INFO] Adding personalization features")
+    _ensure_columns(feature_table, REQUIRED_FEATURE_COLS)
+    _ensure_columns(train_orders, REQUIRED_ORDER_COLS)
+
+    LOGGER.info("Adding personalization features")
 
     # ----------------------------------
     # 1. cand_is_new_for_kiosk
@@ -40,6 +66,6 @@ def add_personalization_features(
 
     
 
-    print("[INFO] Personalization features added")
+    LOGGER.info("Personalization features added")
 
     return ft

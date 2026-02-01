@@ -1,5 +1,25 @@
 from __future__ import annotations
+
+import logging
+from typing import Sequence
+
 import polars as pl
+
+LOGGER = logging.getLogger(__name__)
+
+REQUIRED_COLS: tuple[str, ...] = (
+    "anchor_product_id",
+    "candidate_product_id",
+    "lift",
+    "cooc_count",
+)
+
+
+def _ensure_columns(df: pl.DataFrame, cols: Sequence[str]) -> None:
+    missing = [c for c in cols if c not in df.columns]
+    if missing:
+        missing_str = ", ".join(missing)
+        raise ValueError(f"Missing required columns: {missing_str}")
 
 
 def select_top_k_candidates(
@@ -18,7 +38,8 @@ def select_top_k_candidates(
     - lift
     """
 
-    print(f"[INFO] Selecting top-{k} candidates per anchor")
+    _ensure_columns(candidates, REQUIRED_COLS)
+    LOGGER.info("Selecting top-%s candidates per anchor", k)
 
     top_k = (
         candidates
@@ -31,6 +52,6 @@ def select_top_k_candidates(
         .head(k)
     )
 
-    print(f"[INFO] Top-K candidates shape: {top_k.shape}")
+    LOGGER.info("Top-K candidates shape: %s", top_k.shape)
 
     return top_k

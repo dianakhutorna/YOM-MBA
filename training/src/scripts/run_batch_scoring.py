@@ -1,28 +1,32 @@
 from __future__ import annotations
 
 from pathlib import Path
+from datetime import datetime
+
 import polars as pl
 import lightgbm as lgb
 
+from training.src.io import load_commerces_csv, load_orders_parquet, load_products_csv
+from training.src.paths import DATA_DIR, INTERIM_DIR, MODELS_DIR
 from training.src.steps.build_baskets import build_baskets
 from training.src.steps.generate_candidates import generate_candidates
 from training.src.steps.select_top_k_candidates import select_top_k_candidates
 from training.src.steps.build_feature_table import build_feature_table
-from training.src.steps.add_product_features import add_product_features
-from training.src.steps.add_kiosk_features import add_kiosk_history_features
-from training.src.steps.encode_categorical_features import encode_channel_one_hot
-from training.src.steps.encode_region_one_hot import encode_region_one_hot
-from training.src.steps.add_behavioral_features import add_behavioral_features
-from training.src.steps.add_personalization_features import add_personalization_features
+from training.src.cli import parse_config_args
+from training.src.config import FeatureConfig, load_yaml_config
+from training.src.features import add_all_features
 
 
 
 # ==========================
 # Config
 # ==========================
-ORDERS_PATH = Path("training/data/interim/orders_sample.parquet")
-PRODUCTS_PATH = Path("training/data/products_v2.csv")
-MODEL_PATH = Path("training/models/lgbm_ranker.txt")
+ORDERS_PATH = INTERIM_DIR / "orders_sample.parquet"
+PRODUCTS_PATH = DATA_DIR / "products_v2.csv"
+COMMERCES_PATH = DATA_DIR / "commerces.csv"
+FEATURES_CONFIG_PATH = Path("training/configs/features.yaml")
+SCRIPT_CONFIG_PATH = Path("training/configs/run_batch_scoring.yaml")
+MODEL_PATH = MODELS_DIR / "lgbm_ranker.txt"
 
 INFERENCE_DATE = pl.datetime(2024, 1, 4)
 
@@ -51,11 +55,26 @@ FEATURE_COLS_BASE = [
 # Main
 # ==========================
 def main():
+    config_path, features_path = parse_config_args(
+        default_config=SCRIPT_CONFIG_PATH,
+        default_features_config=FEATURES_CONFIG_PATH,
+        description="Run batch scoring",
+    )
+    cfg = load_yaml_config(config_path) if config_path.exists() else {}
+    global INFERENCE_DATE, MIN_COOC, MIN_LIFT, TOP_K_CANDIDATES, FINAL_N
+    if "inference_date" in cfg:
+        INFERENCE_DATE = datetime.fromisoformat(cfg["inference_date"])
+    MIN_COOC = int(cfg.get("min_cooc", MIN_COOC))
+    MIN_LIFT = float(cfg.get("min_lift", MIN_LIFT))
+    TOP_K_CANDIDATES = int(cfg.get("top_k_candidates", TOP_K_CANDIDATES))
+    FINAL_N = int(cfg.get("final_n", FINAL_N))
     print("[INFO] Loading trained LightGBM model")
-    ranker = lgb.Booster(model_file=str(MODEL_PATH))
+    model_path = Path(cfg.get("model_path", MODEL_PATH))
+    ranker = lgb.Booster(model_file=str(model_path))
 
     print("[INFO] Loading orders")
-    orders = pl.read_parquet(ORDERS_PATH).with_columns(
+    orders_path = Path(cfg.get("orders_path", ORDERS_PATH))
+    orders = load_orders_parquet(orders_path).with_columns(
         pl.col("order_dt").cast(pl.Datetime)
     )
 
@@ -111,24 +130,27 @@ def main():
         queries=queries,
     )
 
-    products = pl.read_csv(PRODUCTS_PATH, separator=";")
-    feature_table = add_product_features(feature_table, products)
-
-    feature_table = add_kiosk_history_features(
-        feature_table=feature_table,
-        train_orders=history_orders,
+    products_path = Path(cfg.get("products_path", PRODUCTS_PATH))
+    commerces_path = Path(cfg.get("commerces_path", COMMERCES_PATH))
+    products = load_products_csv(products_path)
+    commerces = load_commerces_csv(commerces_path)
+    feature_config = (
+        FeatureConfig.from_yaml(features_path)
+        if features_path and features_path.exists()
+        else FeatureConfig()
+    )
+    feature_table = add_all_features(
+        feature_table,
+        orders=history_orders,
+        products=products,
+        commerces=commerces,
+        config=feature_config,
     )
 
     # log scale for co-occurrence count
     feature_table = feature_table.with_columns(
         pl.col("cooc_count").log1p().alias("cooc_count")
     )
-    feature_table = add_behavioral_features(feature_table, history_orders)
-    feature_table = add_personalization_features(feature_table=feature_table, train_orders=history_orders)
-
-
-    feature_table = encode_channel_one_hot(feature_table)
-    feature_table = encode_region_one_hot(feature_table)
 
     # --------------------------------
     # FEATURE COLS (dynamic, like train)
@@ -175,12 +197,10 @@ def main():
     # --------------------------------
     # Save
     # --------------------------------
-    out_path = Path("training/data/interim/predictions.parquet")
+    out_path = INTERIM_DIR / "predictions.parquet"
     final.write_parquet(out_path)
     print(f"[OK] Saved predictions to {out_path}")
 
 
 if __name__ == "__main__":
     main()
-
-

@@ -3,11 +3,13 @@ import polars as pl
 import itertools
 import numpy as np
 
+from training.src.paths import INTERIM_DIR
+
 
 # ===============================
 # CONFIG
 # ===============================
-PREDICTIONS_PATH = "training/data/interim/predictions.parquet"  # ← поменяй если нужно
+PREDICTIONS_PATH = INTERIM_DIR / "predictions.parquet"
 ANCHOR_PRODUCT_ID = "000295-003"   # ← выбери популярный anchor
 N_KIOSKS = 50
 TOP_K = 10

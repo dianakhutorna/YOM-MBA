@@ -1,5 +1,10 @@
 from __future__ import annotations
+
+import logging
+
 import polars as pl
+
+LOGGER = logging.getLogger(__name__)
 
 
 def encode_region_one_hot(
@@ -12,6 +17,8 @@ def encode_region_one_hot(
     """
     if region_col not in df.columns:
         return df
+
+    LOGGER.info("One-hot encoding %s", region_col)
 
     regions = (
         df.select(region_col)
