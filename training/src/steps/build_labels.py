@@ -37,30 +37,29 @@ def _build_test_pairs(test_orders: pl.DataFrame) -> pl.DataFrame:
 
     return (
         test_baskets
-        .select(["kiosk_id", "products"])
+        .select(["kiosk_id", "order_id", "products"])
         .explode("products")
         .rename({"products": "anchor_product_id"})
         .join(
             test_baskets
-            .select(["kiosk_id", "products"])
+            .select(["kiosk_id", "order_id", "products"])
             .explode("products")
             .rename({"products": "candidate_product_id"}),
-            on="kiosk_id",
+            on=["kiosk_id", "order_id"],
         )
         .filter(pl.col("anchor_product_id") != pl.col("candidate_product_id"))
-        .select(
-            "kiosk_id",
-            "anchor_product_id",
-            "candidate_product_id",
-        )
-        .unique()
-        .with_columns(pl.lit(1).alias("label"))
+        .group_by(["kiosk_id", "anchor_product_id", "candidate_product_id"])
+        .agg(pl.len().alias("cooc_count"))
     )
 
 
 def build_labels(
     feature_table: pl.DataFrame,
     test_orders: pl.DataFrame,
+    *,
+    window_days: int | None = None,
+    min_cooc_label: int | None = None,
+    dt_col: str = "order_dt",
 ) -> pl.DataFrame:
     """
     Build anchor-based labels for ranking.
@@ -71,11 +70,52 @@ def build_labels(
 
     _ensure_columns(feature_table, REQUIRED_FEATURE_COLS)
     _ensure_columns(test_orders, REQUIRED_TEST_ORDER_COLS)
+    if window_days is not None and dt_col not in test_orders.columns:
+        raise ValueError(f"Missing datetime column for windowed labels: {dt_col}")
 
     LOGGER.info("Building labels from feature table: %s", feature_table.shape)
 
-    # 1. Generate anchor–candidate pairs from test baskets
-    test_pairs = _build_test_pairs(test_orders)
+    if min_cooc_label is None:
+        min_cooc_label = 1
+    if min_cooc_label < 1:
+        min_cooc_label = 1
+
+    # 1. Generate anchor–candidate pairs from test orders
+    if window_days is None:
+        test_pairs = _build_test_pairs(test_orders)
+    else:
+        window = pl.duration(days=window_days)
+        anchor_events = (
+            test_orders
+            .select(["kiosk_id", "product_id", dt_col])
+            .rename({"product_id": "anchor_product_id", dt_col: "anchor_dt"})
+        )
+        candidate_events = (
+            test_orders
+            .select(["kiosk_id", "product_id", dt_col])
+            .rename({"product_id": "candidate_product_id", dt_col: "candidate_dt"})
+        )
+        test_pairs = (
+            anchor_events
+            .join(candidate_events, on="kiosk_id", how="inner")
+            .filter(pl.col("candidate_product_id") != pl.col("anchor_product_id"))
+            .filter(
+                (pl.col("candidate_dt") >= pl.col("anchor_dt")) &
+                (pl.col("candidate_dt") <= pl.col("anchor_dt") + window)
+            )
+            .select(["kiosk_id", "anchor_product_id", "candidate_product_id"])
+            .group_by(["kiosk_id", "anchor_product_id", "candidate_product_id"])
+            .agg(pl.len().alias("cooc_count"))
+        )
+
+    if min_cooc_label > 1:
+        test_pairs = test_pairs.filter(pl.col("cooc_count") >= min_cooc_label)
+
+    test_pairs = (
+        test_pairs
+        .select(["kiosk_id", "anchor_product_id", "candidate_product_id"])
+        .with_columns(pl.lit(1).alias("label"))
+    )
 
     # 3. Join with feature table
     labeled = (

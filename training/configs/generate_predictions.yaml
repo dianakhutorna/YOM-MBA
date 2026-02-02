@@ -1,0 +1,17 @@
+orders_path: training/data/interim/orders_sample.parquet
+products_path: training/data/external/products_v2.csv
+commerces_path: training/data/external/commerces.csv
+model_path: training/models/lgbm_ranker.txt
+features_config_path: training/configs/features.yaml
+
+predictions_path: training/data/interim/predictions.parquet
+popularity_path: training/data/interim/popularity_fallback.parquet
+
+train_ratio: 0.6
+val_ratio: 0.2
+test_ratio: 0.2
+
+min_cooc: 3
+min_lift: 2.0
+top_k_candidates: 250
+catalog_top_k: 100

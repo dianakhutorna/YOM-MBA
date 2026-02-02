@@ -2,6 +2,7 @@ from pathlib import Path
 
 from training.src.cli import parse_config_args
 from training.src.config import OfflineExperimentConfig
+from training.src.steps.split_orders import split_orders_by_time
 from training.src.pipelines.offline_experiment import run
 
 

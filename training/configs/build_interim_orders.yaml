@@ -1,0 +1,5 @@
+raw_paths:
+  - training/data/raw/2024-20250001_part_00-001.csv
+  - training/data/raw/2024-20250000_part_00-003.csv
+output_path: training/data/interim/orders_sample.parquet
+n_rows: 500000

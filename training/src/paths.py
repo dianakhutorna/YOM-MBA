@@ -8,6 +8,7 @@ TRAINING_DIR = REPO_ROOT / "training"
 DATA_DIR = TRAINING_DIR / "data"
 RAW_DIR = DATA_DIR / "raw"
 INTERIM_DIR = DATA_DIR / "interim"
+EXTERNAL_DIR = DATA_DIR / "external"
 
 MODELS_DIR = TRAINING_DIR / "models"
 LOGS_DIR = TRAINING_DIR / "logs"

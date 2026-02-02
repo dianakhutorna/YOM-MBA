@@ -11,6 +11,7 @@ from training.src.steps.build_labels import build_labels
 from training.src.steps.generate_candidates import generate_candidates
 from training.src.steps.recall_at_k import recall_at_k
 from training.src.steps.select_top_k_candidates import select_top_k_candidates
+from training.src.steps.split_orders import split_orders_by_time
 
 
 def run(config: OfflineExperimentConfig) -> float:
@@ -20,10 +21,15 @@ def run(config: OfflineExperimentConfig) -> float:
     products = load_products_csv(config.products_path)
     print(f"[INFO] Loaded orders: {orders.shape}")
 
-    train_orders = orders.filter(pl.col("order_dt") < config.split_date)
-    test_orders = orders.filter(pl.col("order_dt") >= config.split_date)
+    train_orders, val_orders, test_orders = split_orders_by_time(
+        orders,
+        train_ratio=config.train_ratio,
+        val_ratio=config.val_ratio,
+        test_ratio=config.test_ratio,
+    )
 
     print(f"[INFO] Train orders: {train_orders.shape}")
+    print(f"[INFO] Val orders:   {val_orders.shape}")
     print(f"[INFO] Test orders:  {test_orders.shape}")
 
     baskets_train = build_baskets(train_orders)
@@ -47,16 +53,24 @@ def run(config: OfflineExperimentConfig) -> float:
 
     feature_table = add_product_features(feature_table, products)
 
-    labeled_features = build_labels(
+    labeled_train = build_labels(
+        feature_table,
+        val_orders,
+        window_days=config.label_window_days,
+    )
+    labeled_test = build_labels(
         feature_table,
         test_orders,
+        window_days=config.label_window_days,
     )
 
-    save_parquet(labeled_features, config.labeled_out_path)
-    print(f"[OK] Saved labeled features to {config.labeled_out_path}")
+    save_parquet(labeled_train, config.labeled_train_out_path)
+    save_parquet(labeled_test, config.labeled_test_out_path)
+    print(f"[OK] Saved train labels to {config.labeled_train_out_path}")
+    print(f"[OK] Saved test labels to {config.labeled_test_out_path}")
 
     recall = recall_at_k(
-        labeled_features,
+        labeled_test,
         k=config.top_k,
     )
 

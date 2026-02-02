@@ -7,7 +7,7 @@ from typing import Any
 
 import yaml
 
-from training.src.paths import DATA_DIR, INTERIM_DIR
+from training.src.paths import EXTERNAL_DIR, INTERIM_DIR
 
 
 @dataclass(frozen=True)
@@ -49,9 +49,13 @@ class SplitConfig:
 @dataclass(frozen=True)
 class OfflineExperimentConfig:
     orders_path: Path = INTERIM_DIR / "orders_sample.parquet"
-    products_path: Path = DATA_DIR / "products_v2.csv"
-    labeled_out_path: Path = INTERIM_DIR / "labeled_features_sample.parquet"
-    split_date: datetime = datetime(2024, 1, 4)
+    products_path: Path = EXTERNAL_DIR / "products_v2.csv"
+    labeled_train_out_path: Path = INTERIM_DIR / "labeled_features_train.parquet"
+    labeled_test_out_path: Path = INTERIM_DIR / "labeled_features_test.parquet"
+    train_ratio: float = 0.8
+    val_ratio: float = 0.1
+    test_ratio: float = 0.1
+    label_window_days: int | None = 7
     min_cooc: int = 3
     min_lift: float = 2.0
     top_k: int = 20
@@ -62,8 +66,16 @@ class OfflineExperimentConfig:
         return cls(
             orders_path=Path(data.get("orders_path", cls.orders_path)),
             products_path=Path(data.get("products_path", cls.products_path)),
-            labeled_out_path=Path(data.get("labeled_out_path", cls.labeled_out_path)),
-            split_date=_parse_datetime(data.get("split_date", cls.split_date)),
+            labeled_train_out_path=Path(
+                data.get("labeled_train_out_path", cls.labeled_train_out_path)
+            ),
+            labeled_test_out_path=Path(
+                data.get("labeled_test_out_path", cls.labeled_test_out_path)
+            ),
+            train_ratio=float(data.get("train_ratio", cls.train_ratio)),
+            val_ratio=float(data.get("val_ratio", cls.val_ratio)),
+            test_ratio=float(data.get("test_ratio", cls.test_ratio)),
+            label_window_days=data.get("label_window_days", cls.label_window_days),
             min_cooc=int(data.get("min_cooc", cls.min_cooc)),
             min_lift=float(data.get("min_lift", cls.min_lift)),
             top_k=int(data.get("top_k", cls.top_k)),
@@ -89,4 +101,32 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 
 def load_yaml_config(path: Path) -> dict[str, Any]:
-    return _load_yaml(path)
+    data = _load_yaml(path)
+    extends = data.pop("extends", None)
+    if not extends:
+        return data
+    base_paths: list[Path]
+    if isinstance(extends, str):
+        base_paths = [path.parent / extends]
+    elif isinstance(extends, list):
+        base_paths = [path.parent / str(p) for p in extends]
+    else:
+        raise ValueError("extends must be a string or list of strings")
+    merged: dict[str, Any] = {}
+    for base_path in base_paths:
+        merged = _merge_dicts(merged, load_yaml_config(base_path))
+    return _merge_dicts(merged, data)
+
+
+def _merge_dicts(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in override.items():
+        if (
+            key in merged
+            and isinstance(merged[key], dict)
+            and isinstance(value, dict)
+        ):
+            merged[key] = _merge_dicts(merged[key], value)
+        else:
+            merged[key] = value
+    return merged

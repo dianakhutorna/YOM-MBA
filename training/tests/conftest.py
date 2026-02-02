@@ -5,13 +5,13 @@ from pathlib import Path
 import pytest
 
 from training.src.io import load_orders_csv_sample
-from training.src.paths import DATA_DIR
+from training.src.paths import RAW_DIR
 from training.src.steps.preprocessing import preprocess_orders
 from training.src.steps.build_baskets import build_baskets
 from training.src.steps.generate_candidates import generate_candidates
 from training.src.steps.select_top_k_candidates import select_top_k_candidates
 
-RAW_CSV = DATA_DIR / "2024-20250001_part_00-001.csv"
+RAW_CSV = RAW_DIR / "2024-20250001_part_00-001.csv"
 
 
 @pytest.fixture(scope="session")

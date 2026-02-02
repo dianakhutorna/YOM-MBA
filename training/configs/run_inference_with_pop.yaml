@@ -1,9 +1,2 @@
-inference_date: "2024-01-04T00:00:00"
-min_cooc: 3
-min_lift: 2.0
-top_k_candidates: 100
-final_n: 10
-orders_path: training/data/interim/orders_sample.parquet
-products_path: training/data/products_v2.csv
-commerces_path: training/data/commerces.csv
+extends: base_inference.yaml
 model_path: training/models/lgbm_ranker.txt

@@ -1,7 +1,11 @@
 orders_path: training/data/interim/orders_sample.parquet
-products_path: training/data/products_v2.csv
-labeled_out_path: training/data/interim/labeled_features_sample.parquet
-split_date: "2024-01-04T00:00:00"
+products_path: training/data/external/products_v2.csv
+labeled_train_out_path: training/data/interim/labeled_features_train.parquet
+labeled_test_out_path: training/data/interim/labeled_features_test.parquet
+train_ratio: 0.8
+val_ratio: 0.1
+test_ratio: 0.1
+label_window_days: 7
 min_cooc: 3
 min_lift: 2.0
 top_k: 20
