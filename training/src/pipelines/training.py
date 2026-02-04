@@ -174,6 +174,10 @@ def run(config: TrainingPipelineConfig) -> None:
         "candidate_count",
         "support",
         "lift",
+        "confidence",
+        "same_category",
+        "cooc_count",
+        "anchor_count",
     ]
     present_unwanted = [c for c in unwanted if c in feature_table.columns]
     if present_unwanted:
