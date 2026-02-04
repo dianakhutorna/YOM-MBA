@@ -26,7 +26,7 @@ from training.src.steps.rank_eval_at_k import (
     recall_at_k_by_score,
     ndcg_at_k_by_score,
     positives_at_k_by_score,
-    quantity_captured_at_k_by_score,
+    precision_at_k_by_score,
 )
 
 
@@ -51,6 +51,7 @@ class TrainingPipelineConfig:
     label_window_days: int | None
     min_cooc_label: int
     max_neg_per_group: int
+    eval_ks: list[int]
     features_config_path: Path | None
 
     @classmethod
@@ -76,6 +77,7 @@ class TrainingPipelineConfig:
             label_window_days=data.get("label_window_days", 7),
             min_cooc_label=int(data.get("min_cooc_label", 1)),
             max_neg_per_group=int(data.get("max_neg_per_group", 60)),
+            eval_ks=[int(k) for k in data.get("eval_ks", [20])],
             features_config_path=Path(data["features_config_path"]) if data.get("features_config_path") else None,
         )
 
@@ -301,10 +303,11 @@ def run(config: TrainingPipelineConfig) -> None:
     train_set = lgb.Dataset(X_train, label=y_train, group=g_train)
     valid_set = lgb.Dataset(X_val, label=y_val, group=g_val, reference=train_set)
 
+    eval_ks = sorted({k for k in config.eval_ks if k > 0}) or [20]
     params = {
         "objective": "lambdarank",
         "metric": "ndcg",
-        "ndcg_eval_at": [20],
+        "ndcg_eval_at": eval_ks,
         "learning_rate": 0.05,
         "num_leaves": 63,
         "min_data_in_leaf": 50,
@@ -371,11 +374,12 @@ def run(config: TrainingPipelineConfig) -> None:
     eval_scored = pl.from_pandas(eval_pdf)
 
     _log_label_stats("TestEval", eval_labeled)
-    LOGGER.info("[TEST] HitRate@20: %.4f", hitrate_at_k_by_score(eval_scored, k=20))
-    LOGGER.info("[TEST] Recall@20: %.4f", recall_at_k_by_score(eval_scored, k=20))
-    LOGGER.info("[TEST] NDCG@20: %.4f", ndcg_at_k_by_score(eval_scored, k=20))
-    LOGGER.info("[TEST] Positives@20: %.4f", positives_at_k_by_score(eval_scored, k=20))
-    LOGGER.info("[TEST] QuantityCaptured@20: %.4f", quantity_captured_at_k_by_score(eval_scored, test_eval_orders, k=20))
+    for k in eval_ks:
+        LOGGER.info("[TEST] HitRate@%s: %.4f", k, hitrate_at_k_by_score(eval_scored, k=k))
+        LOGGER.info("[TEST] Recall@%s: %.4f", k, recall_at_k_by_score(eval_scored, k=k))
+        LOGGER.info("[TEST] NDCG@%s: %.4f", k, ndcg_at_k_by_score(eval_scored, k=k))
+        LOGGER.info("[TEST] Precision@%s: %.4f", k, precision_at_k_by_score(eval_scored, k=k))
+        LOGGER.info("[TEST] Positives@%s: %.4f", k, positives_at_k_by_score(eval_scored, k=k))
 
     config.model_path.parent.mkdir(parents=True, exist_ok=True)
     booster.save_model(str(config.model_path))
