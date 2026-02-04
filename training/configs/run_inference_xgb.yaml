@@ -1,3 +1,0 @@
-extends: base_inference.yaml
-model_path: training/models/xgb_ranker.json
-features_path: training/models/xgb_features.txt

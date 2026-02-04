@@ -7,6 +7,7 @@ import json
 
 import lightgbm as lgb
 import polars as pl
+import pandas as pd
 
 from training.src.config import load_yaml_config
 from training.src.features import add_all_features
@@ -164,6 +165,21 @@ def run(config: TrainingPipelineConfig) -> None:
         config=feature_config,
     )
 
+    # -----------------------------
+    # Drop unwanted features (keep only minimal set)
+    # -----------------------------
+    unwanted = [
+        "anchor_kiosk_frequency",
+        "kiosk_bought_candidate_before",
+        "candidate_count",
+        "support",
+        "lift",
+    ]
+    present_unwanted = [c for c in unwanted if c in feature_table.columns]
+    if present_unwanted:
+        LOGGER.info("Dropping unwanted feature columns: %s", present_unwanted)
+        feature_table = feature_table.drop(present_unwanted)
+
     labeled_train = build_labels(
         feature_table,
         train_orders,
@@ -219,19 +235,20 @@ def run(config: TrainingPipelineConfig) -> None:
         df = _add_query_id(df)
         if df.height == 0:
             return df
+        cols = df.columns
         pos = df.filter(pl.col("label") == 1)
         neg = df.filter(pl.col("label") == 0)
         if neg.height == 0:
             return df
         neg = (
             neg
-            .with_columns(pl.rand(seed=seed).alias("_rand"))
+            .with_columns(pl.arange(0, pl.len()).shuffle(seed=seed).alias("_rand"))
             .sort(["query_id", "_rand"])
             .group_by("query_id")
             .head(max_neg_per_group)
             .drop("_rand")
         )
-        return pl.concat([pos, neg], how="vertical")
+        return pl.concat([pos.select(cols), neg.select(cols)], how="vertical")
 
     def _to_lgbm_arrays(df: pl.DataFrame):
         pdf = _add_query_id(df).select(["query_id", "label"] + feature_cols).to_pandas()
@@ -301,6 +318,16 @@ def run(config: TrainingPipelineConfig) -> None:
         valid_names=["valid"],
         callbacks=[lgb.early_stopping(50), lgb.log_evaluation(period=50)],
     )
+
+    # ---------- Feature importance ----------
+    imp_df = pd.DataFrame(
+        {
+            "feature": feature_cols,
+            "importance": booster.feature_importance(importance_type="gain"),
+        }
+    ).sort_values("importance", ascending=False)
+    LOGGER.info("Feature importance (gain):")
+    LOGGER.info("\n" + imp_df.to_string(index=False))
 
     # ---------- Offline evaluation on test_eval ----------
     eval_queries = (

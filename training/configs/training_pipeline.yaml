@@ -1,7 +1,7 @@
 raw_paths:
   - training/data/raw/2024-20250001_part_00-001.csv
   - training/data/raw/2024-20250000_part_00-003.csv
-n_rows: 2000000
+n_rows: 1000000
 interim_path: training/data/interim/orders_sample.parquet
 products_path: training/data/external/products_v2.csv
 commerces_path: training/data/external/commerces.csv
@@ -15,5 +15,5 @@ min_lift: 2.0
 top_k: 100
 label_window_days: 2
 min_cooc_label: 1
-max_neg_per_group: 60
+max_neg_per_group: 20
 features_config_path: training/configs/features.yaml

@@ -7,7 +7,7 @@ from training.src.pipelines.offline_experiment import run
 
 
 # --------------------------------------------------
-# Experiment configuration (ВСЕ РЕШЕНИЯ ЗДЕСЬ)
+# Experiment configuration 
 # --------------------------------------------------
 CONFIG_PATH = Path("training/configs/offline_experiment.yaml")
 CONFIG = OfflineExperimentConfig.from_yaml(CONFIG_PATH) if CONFIG_PATH.exists() else OfflineExperimentConfig()

@@ -1,2 +1,0 @@
-extends: base_train.yaml
-model_path: training/models/lgbm_ranker.txt
