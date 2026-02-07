@@ -81,3 +81,10 @@ raw:
   --n-min 4 \
   --n-max 10
 
+python -m training.src.scripts.serve_bundle \
+  --kiosk-id 4bbaabd9afa6b33d3f569bce017978b2 \
+  --anchor-product-id 004752-001 \
+  --excluded-products 004747-001 \
+  --n-group-key 3 \
+  --n-min 4 \
+  --n-max 10

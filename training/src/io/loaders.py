@@ -16,6 +16,7 @@ def load_orders_csv_sample(
     raw_path: Path,
     n_rows: int = 1_000_000,
     schema_overrides: Mapping[str, pl.DataType] | None = None,
+    sample_position: str = "head",
 ) -> pl.DataFrame:
     if not raw_path.exists():
         raise FileNotFoundError(f"Raw file not found: {raw_path}")
@@ -29,9 +30,15 @@ def load_orders_csv_sample(
         schema_overrides=schema_overrides,
     )
 
-    df = lf.limit(n_rows).collect()
+    if sample_position not in {"head", "tail"}:
+        raise ValueError("sample_position must be 'head' or 'tail'")
 
-    print(f"Loaded orders sample: rows={df.height}, cols={df.width}")
+    if sample_position == "tail":
+        df = lf.tail(n_rows).collect()
+    else:
+        df = lf.limit(n_rows).collect()
+
+    print(f"Loaded orders sample from {raw_path}: rows={df.height}, cols={df.width}")
     print(f"Columns: {df.columns}")
 
     return df

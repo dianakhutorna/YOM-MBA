@@ -1,7 +1,7 @@
 raw_paths:
-  - training/data/raw/2024-20250001_part_00-001.csv
   - training/data/raw/2024-20250000_part_00-003.csv
 n_rows: 500000
+sample_position: tail
 interim_path: training/data/interim/orders_sample.parquet
 products_path: training/data/external/products_v2.csv
 commerces_path: training/data/external/commerces.csv

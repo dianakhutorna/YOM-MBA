@@ -38,6 +38,7 @@ LOGGER = logging.getLogger(__name__)
 class TrainingPipelineConfig:
     raw_paths: list[Path]
     n_rows: int
+    sample_position: str
     interim_path: Path
     products_path: Path
     commerces_path: Path
@@ -64,6 +65,7 @@ class TrainingPipelineConfig:
         return cls(
             raw_paths=raw_paths,
             n_rows=int(data.get("n_rows", 500_000)),
+            sample_position=str(data.get("sample_position", "head")),
             interim_path=Path(data.get("interim_path", INTERIM_DIR / "orders_sample.parquet")),
             products_path=Path(data.get("products_path", EXTERNAL_DIR / "products_v2.csv")),
             commerces_path=Path(data.get("commerces_path", EXTERNAL_DIR / "commerces.csv")),
@@ -90,8 +92,14 @@ def run(config: TrainingPipelineConfig) -> None:
     )
 
     per_file = max(1, config.n_rows // len(config.raw_paths))
+    LOGGER.info(
+        "Loading raw paths: %s (per_file=%s, sample_position=%s)",
+        [str(p) for p in config.raw_paths],
+        per_file,
+        config.sample_position,
+    )
     raw_frames = [
-        load_orders_csv_sample(path, n_rows=per_file)
+        load_orders_csv_sample(path, n_rows=per_file, sample_position=config.sample_position)
         for path in config.raw_paths
     ]
     raw_orders = pl.concat(raw_frames, how="vertical")
