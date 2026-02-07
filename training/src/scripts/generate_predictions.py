@@ -100,13 +100,53 @@ def main() -> None:
     if not model_feature_cols:
         raise ValueError("Model feature list is empty; retrain to persist features.")
 
-    for col in model_feature_cols:
-        if col not in feature_table.columns:
+    missing_cols = [col for col in model_feature_cols if col not in feature_table.columns]
+    if missing_cols:
+        LOGGER.warning("Missing features in inference: %s. Adding zeros (this may impact predictions!)", missing_cols)
+        for col in missing_cols:
             feature_table = feature_table.with_columns(pl.lit(0).alias(col))
+    
     feature_table = feature_table.with_columns([pl.col(c).fill_null(0) for c in model_feature_cols])
+
+    feature_max_abs = feature_table.select(
+        [pl.col(c).abs().max().alias(c) for c in model_feature_cols]
+    ).row(0)
+    zero_only = [
+        name for name, max_abs in zip(model_feature_cols, feature_max_abs)
+        if max_abs == 0 or max_abs is None
+    ]
+    if zero_only:
+        LOGGER.warning(
+            "Zero-only features in inference (%s): %s",
+            len(zero_only),
+            zero_only[:10],
+        )
 
     scores = ranker.predict(feature_table.select(model_feature_cols).to_pandas())
     scored = feature_table.with_columns(pl.Series("score", scores))
+
+    score_range = scored.select(
+        pl.col("score").min().alias("min"),
+        pl.col("score").max().alias("max"),
+        pl.col("score").mean().alias("mean"),
+    ).row(0)
+    LOGGER.info("Score stats: min=%.6f max=%.6f mean=%.6f", score_range[0], score_range[1], score_range[2])
+
+    score_spread = (
+        scored
+        .group_by(["kiosk_id", "anchor_product_id"])
+        .agg(pl.col("score").std().alias("score_std"))
+    )
+    zero_std = score_spread.filter(
+        (pl.col("score_std") == 0) | (pl.col("score_std").is_null())
+    ).height
+    if score_spread.height > 0:
+        LOGGER.info(
+            "Queries with zero score spread: %s/%s (%.2f%%)",
+            zero_std,
+            score_spread.height,
+            100.0 * zero_std / score_spread.height,
+        )
 
     final = (
         scored

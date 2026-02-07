@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 import polars as pl
 
@@ -38,8 +39,11 @@ def encode_channel_one_hot(
         .to_list()
     )
 
+    def _normalize_value(value: str) -> str:
+        return re.sub(r"\s+", "_", str(value).strip())
+
     for ch in channels:
-        col_name = f"{prefix}_{ch}"
+        col_name = f"{prefix}_{_normalize_value(ch)}"
         df = df.with_columns(
             (pl.col(channel_col) == ch)
             .cast(pl.Int8)
