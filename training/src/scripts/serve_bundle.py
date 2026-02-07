@@ -117,11 +117,11 @@ def apply_bundle_rules(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Serve bundle from predictions.parquet with fallback")
     parser.add_argument("--config", default="training/configs/serve_bundle.yaml")
-    parser.add_argument("--kiosk-id", default="")
-    parser.add_argument("--anchor-product-id", default="")
+    parser.add_argument("--kiosk-id", required=False, default="")
+    parser.add_argument("--anchor-product-id", required=False, default="")
     parser.add_argument("--included-products", default="")
     parser.add_argument("--excluded-products", default="")
-    parser.add_argument("--agg-key", default="")
+    parser.add_argument("--allowed-categories", default="")
     parser.add_argument("--n-group-key", type=int, default=0)
     parser.add_argument("--n-min", type=int, default=10)
     parser.add_argument("--n-max", type=int, default=20)
@@ -138,11 +138,11 @@ def main() -> None:
 
     included_products = _parse_list(args.included_products or cfg.get("included_products"))
     excluded_products = _parse_list(args.excluded_products or cfg.get("excluded_products"))
-    allowed_categories = _parse_list(args.agg_key or cfg.get("agg_key"))
+    allowed_categories = _parse_list(args.allowed_categories or cfg.get("allowed_categories") or cfg.get("agg_key"))
 
     n_group_key = args.n_group_key if args.n_group_key > 0 else int(cfg.get("n_group_key", 0)) or None
-    n_min = max(1, args.n_min if args.n_min else int(cfg.get("N_min", 10)))
-    n_max = max(n_min, args.n_max if args.n_max else int(cfg.get("N_max", 20)))
+    n_min = max(1, args.n_min if args.n_min else int(cfg.get("n_min", 10)))
+    n_max = max(n_min, args.n_max if args.n_max else int(cfg.get("n_max", 20)))
 
     predictions_path = Path(cfg.get("predictions_path", INTERIM_DIR / "predictions.parquet"))
     popularity_path = Path(cfg.get("popularity_path", INTERIM_DIR / "popularity_fallback.parquet"))

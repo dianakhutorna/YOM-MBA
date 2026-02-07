@@ -7,11 +7,11 @@ features_config_path: training/configs/features.yaml
 predictions_path: training/data/interim/predictions.parquet
 popularity_path: training/data/interim/popularity_fallback.parquet
 
-train_ratio: 0.6
-val_ratio: 0.2
+train_ratio: 0.7
+val_ratio: 0.1
 test_ratio: 0.2
 
 min_cooc: 3
 min_lift: 2.0
-top_k_candidates: 250
+top_k_candidates: 100
 catalog_top_k: 100
