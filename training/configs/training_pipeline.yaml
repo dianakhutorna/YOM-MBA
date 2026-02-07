@@ -17,4 +17,5 @@ label_window_days: 2
 min_cooc_label: 1
 max_neg_per_group: 20
 eval_ks: [5, 10, 20, 50]
+eval_extra_neg_per_query: 200
 features_config_path: training/configs/features.yaml

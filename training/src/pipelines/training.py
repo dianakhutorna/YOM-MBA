@@ -54,6 +54,7 @@ class TrainingPipelineConfig:
     min_cooc_label: int
     max_neg_per_group: int
     eval_ks: list[int]
+    eval_extra_neg_per_query: int
     features_config_path: Path | None
 
     @classmethod
@@ -81,6 +82,7 @@ class TrainingPipelineConfig:
             min_cooc_label=int(data.get("min_cooc_label", 1)),
             max_neg_per_group=int(data.get("max_neg_per_group", 60)),
             eval_ks=[int(k) for k in data.get("eval_ks", [20])],
+            eval_extra_neg_per_query=int(data.get("eval_extra_neg_per_query", 0)),
             features_config_path=Path(data["features_config_path"]) if data.get("features_config_path") else None,
         )
 
@@ -136,8 +138,8 @@ def run(config: TrainingPipelineConfig) -> None:
     eval_size = int(test_holdout_sorted.height * test_eval_ratio)
     eval_size = max(1, min(eval_size, max(0, test_holdout_sorted.height - 1)))
     label_size = test_holdout_sorted.height - eval_size
-    test_label_orders = test_holdout_sorted.head(label_size)
-    test_eval_orders = test_holdout_sorted.tail(eval_size)
+    test_eval_orders = test_holdout_sorted.head(eval_size)
+    test_label_orders = test_holdout_sorted.tail(label_size)
     for name, df in (("TestLabel", test_label_orders), ("TestEval", test_eval_orders)):
         if df.height == 0:
             LOGGER.info("%s orders: rows=0", name)
@@ -331,6 +333,131 @@ def run(config: TrainingPipelineConfig) -> None:
         )
         return pl.concat([pos.select(cols), neg.select(cols)], how="vertical")
 
+    def _build_label_pairs(orders: pl.DataFrame, window_days: int | None) -> pl.DataFrame:
+        if window_days is None:
+            test_baskets = (
+                orders
+                .group_by(["kiosk_id", "order_id"])
+                .agg(pl.col("product_id").unique().alias("products"))
+                .filter(pl.col("products").list.len() > 1)
+            )
+            test_pairs = (
+                test_baskets
+                .select(["kiosk_id", "order_id", "products"])
+                .explode("products")
+                .rename({"products": "anchor_product_id"})
+                .join(
+                    test_baskets
+                    .select(["kiosk_id", "order_id", "products"])
+                    .explode("products")
+                    .rename({"products": "candidate_product_id"}),
+                    on=["kiosk_id", "order_id"],
+                )
+                .filter(pl.col("anchor_product_id") != pl.col("candidate_product_id"))
+                .group_by(["kiosk_id", "anchor_product_id", "candidate_product_id"])
+                .agg(pl.len().alias("cooc_count"))
+            )
+        else:
+            window = pl.duration(days=window_days)
+            anchor_events = (
+                orders
+                .select(["kiosk_id", "product_id", "order_dt"])
+                .rename({"product_id": "anchor_product_id", "order_dt": "anchor_dt"})
+            )
+            candidate_events = (
+                orders
+                .select(["kiosk_id", "product_id", "order_dt"])
+                .rename({"product_id": "candidate_product_id", "order_dt": "candidate_dt"})
+            )
+            test_pairs = (
+                anchor_events
+                .join(candidate_events, on="kiosk_id", how="inner")
+                .filter(pl.col("candidate_product_id") != pl.col("anchor_product_id"))
+                .filter(
+                    (pl.col("candidate_dt") >= pl.col("anchor_dt")) &
+                    (pl.col("candidate_dt") <= pl.col("anchor_dt") + window)
+                )
+                .select(["kiosk_id", "anchor_product_id", "candidate_product_id"])
+                .group_by(["kiosk_id", "anchor_product_id", "candidate_product_id"])
+                .agg(pl.len().alias("cooc_count"))
+            )
+        return test_pairs
+
+    def _log_candidate_recall(
+        eval_queries: pl.DataFrame,
+        eval_candidates: pl.DataFrame,
+        label_orders: pl.DataFrame,
+        window_days: int | None,
+        min_cooc_label: int,
+    ) -> None:
+        test_pairs = _build_label_pairs(label_orders, window_days)
+        if min_cooc_label > 1:
+            test_pairs = test_pairs.filter(pl.col("cooc_count") >= min_cooc_label)
+        test_pairs = (
+            test_pairs
+            .select(["kiosk_id", "anchor_product_id", "candidate_product_id"])
+            .join(
+                eval_queries.select(["kiosk_id", "anchor_product_id"]),
+                on=["kiosk_id", "anchor_product_id"],
+                how="inner",
+            )
+        )
+        total_pos = test_pairs.height
+        if total_pos == 0:
+            LOGGER.info("Candidate recall: no positives in label window for eval queries.")
+            return
+        hits = (
+            test_pairs
+            .join(
+                eval_candidates.select(["kiosk_id", "anchor_product_id", "candidate_product_id"]),
+                on=["kiosk_id", "anchor_product_id", "candidate_product_id"],
+                how="inner",
+            )
+            .height
+        )
+        recall = hits / total_pos
+        LOGGER.info("Candidate recall: %.4f (%s/%s)", recall, hits, total_pos)
+
+    def _augment_with_random_negatives(
+        eval_queries: pl.DataFrame,
+        eval_candidates: pl.DataFrame,
+        products: pl.DataFrame,
+        extra_per_query: int,
+        seed: int = 42,
+    ) -> pl.DataFrame:
+        if extra_per_query <= 0 or eval_queries.height == 0:
+            return eval_candidates
+        prod_ids = (
+            products
+            .select(pl.col("productid").cast(pl.Utf8).alias("candidate_product_id"))
+            .unique()
+            .to_series()
+            .to_list()
+        )
+        if not prod_ids:
+            return eval_candidates
+        pdf = eval_queries.select(["kiosk_id", "anchor_product_id"]).to_pandas()
+        rng = np.random.default_rng(seed)
+        idx = rng.integers(0, len(prod_ids), size=(len(pdf), extra_per_query))
+        sampled = [prod_ids[i] for i in idx.ravel()]
+        extra = pl.DataFrame(
+            {
+                "kiosk_id": np.repeat(pdf["kiosk_id"].to_numpy(), extra_per_query),
+                "anchor_product_id": np.repeat(pdf["anchor_product_id"].to_numpy(), extra_per_query),
+                "candidate_product_id": sampled,
+            }
+        ).filter(pl.col("candidate_product_id") != pl.col("anchor_product_id"))
+        extra = extra.join(
+            eval_candidates.select(["kiosk_id", "anchor_product_id", "candidate_product_id"]),
+            on=["kiosk_id", "anchor_product_id", "candidate_product_id"],
+            how="anti",
+        )
+        missing_cols = [c for c in eval_candidates.columns if c not in extra.columns]
+        if missing_cols:
+            extra = extra.with_columns([pl.lit(None).alias(c) for c in missing_cols])
+        extra = extra.select(eval_candidates.columns)
+        return pl.concat([eval_candidates, extra], how="vertical")
+
     def _to_lgbm_arrays(df: pl.DataFrame):
         pdf = _add_query_id(df).select(["query_id", "label"] + feature_cols).to_pandas()
         pdf = pdf.sort_values("query_id", kind="mergesort")
@@ -399,8 +526,8 @@ def run(config: TrainingPipelineConfig) -> None:
         params=params,
         train_set=train_set,
         num_boost_round=1000,
-        valid_sets=[valid_set],
-        valid_names=["valid"],
+        valid_sets=[train_set, valid_set],
+        valid_names=["train", "valid"],
         callbacks=[lgb.early_stopping(50), lgb.log_evaluation(period=50)],
     )
 
@@ -426,6 +553,20 @@ def run(config: TrainingPipelineConfig) -> None:
         baskets=baskets_train,
         topk_candidates=topk_candidates,
         queries=eval_queries,
+    )
+    _log_candidate_recall(
+        eval_queries=eval_queries,
+        eval_candidates=eval_feature_table,
+        label_orders=test_label_orders,
+        window_days=config.label_window_days,
+        min_cooc_label=config.min_cooc_label,
+    )
+    eval_feature_table = _augment_with_random_negatives(
+        eval_queries=eval_queries,
+        eval_candidates=eval_feature_table,
+        products=products,
+        extra_per_query=config.eval_extra_neg_per_query,
+        seed=123,
     )
     eval_feature_table = _add_features(eval_feature_table)
     eval_labeled = build_labels(

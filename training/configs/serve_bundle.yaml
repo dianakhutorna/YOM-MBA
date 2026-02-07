@@ -2,10 +2,11 @@ kiosk_id: ""
 anchor_product_id: ""
 included_products: ""
 excluded_products: ""
+allowed_categories: ""
 agg_key: ""
 n_group_key: 0
-N_min: 10
-N_max: 20
+n_min: 10
+n_max: 20
 predictions_path: training/data/interim/predictions.parquet
 popularity_path: training/data/interim/popularity_fallback.parquet
 products_path: training/data/external/products_v2.csv

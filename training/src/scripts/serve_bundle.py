@@ -32,7 +32,7 @@ def _parse_list(raw: str | None) -> list[str]:
 
 def apply_bundle_rules(
     df_scored: pl.DataFrame,
-    products: pl.DataFrame,
+    products: pl.DataFrame | None,
     *,
     kiosk_id: str,
     anchor_product_id: str,
@@ -43,23 +43,26 @@ def apply_bundle_rules(
     n_min: int,
     n_max: int,
 ) -> pl.DataFrame:
-    prod_map = products.select(
-        [
-            pl.col("productid").cast(pl.Utf8).alias("product_id"),
-            pl.col("category").cast(pl.Utf8),
-        ]
-    )
+    prod_map = None
+    if products is not None:
+        prod_map = products.select(
+            [
+                pl.col("productid").cast(pl.Utf8).alias("product_id"),
+                pl.col("category").cast(pl.Utf8),
+            ]
+        )
 
     df = (
         df_scored
         .with_columns(pl.col("candidate_product_id").cast(pl.Utf8))
-        .join(
+    )
+    if "category" not in df.columns and prod_map is not None:
+        df = df.join(
             prod_map,
             left_on="candidate_product_id",
             right_on="product_id",
             how="left",
         )
-    )
 
     if excluded_products:
         df = df.filter(~pl.col("candidate_product_id").is_in(excluded_products))
@@ -98,13 +101,14 @@ def apply_bundle_rules(
                         "score": [bonus] * len(missing),
                     }
                 )
-                .join(
+            )
+            if prod_map is not None:
+                add_rows = add_rows.join(
                     prod_map,
                     left_on="candidate_product_id",
                     right_on="product_id",
                     how="left",
                 )
-            )
             df = pl.concat([add_rows, df], how="vertical").sort("score", descending=True)
 
     df = df.head(n_max)
@@ -112,6 +116,125 @@ def apply_bundle_rules(
         LOGGER.warning("Returned only %s items (< N_min=%s).", df.height, n_min)
 
     return df
+
+
+def _fill_with_popularity(
+    df: pl.DataFrame,
+    fallback: pl.DataFrame,
+    *,
+    kiosk_id: str,
+    anchor_product_id: str,
+    excluded_products: list[str],
+    allowed_categories: list[str],
+    n_max: int,
+) -> pl.DataFrame:
+    if fallback.is_empty():
+        return df
+
+    fallback_df = fallback.with_columns(
+        [
+            pl.lit(kiosk_id).alias("kiosk_id"),
+            pl.lit(anchor_product_id).alias("anchor_product_id"),
+        ]
+    )
+    if df.height > 0:
+        min_score = df.select(pl.min("score")).item()
+        if min_score is None:
+            min_score = 0.0
+        fallback_df = fallback_df.with_columns(pl.lit(min_score - 1.0).alias("score"))
+    if "category" not in fallback_df.columns:
+        fallback_df = fallback_df.with_columns(pl.lit(None).cast(pl.Utf8).alias("category"))
+
+    seen = set(df.select("candidate_product_id").to_series().to_list())
+    fallback_df = fallback_df.filter(~pl.col("candidate_product_id").is_in(list(seen)))
+    fallback_df = fallback_df.filter(pl.col("candidate_product_id") != anchor_product_id)
+    if excluded_products:
+        fallback_df = fallback_df.filter(~pl.col("candidate_product_id").is_in(excluded_products))
+
+    if allowed_categories and "category" in fallback_df.columns:
+        filtered = fallback_df.filter(pl.col("category").is_in(allowed_categories))
+        if filtered.height == 0:
+            LOGGER.warning("Popularity fallback has no items in allowed_categories; using unfiltered fallback.")
+        else:
+            fallback_df = filtered
+
+    need = max(0, n_max - df.height)
+    if need == 0:
+        return df
+    fallback_df = fallback_df.sort("score", descending=True).head(need)
+    out = pl.concat([df, fallback_df], how="vertical").sort("score", descending=True)
+    return out
+
+
+def build_bundle(
+    preds: pl.DataFrame,
+    fallback: pl.DataFrame,
+    products: pl.DataFrame | None,
+    *,
+    kiosk_id: str,
+    anchor_product_id: str,
+    included_products: list[str],
+    excluded_products: list[str],
+    allowed_categories: list[str],
+    n_group_key: int | None,
+    n_min: int,
+    n_max: int,
+) -> pl.DataFrame:
+    if "category" not in fallback.columns:
+        fallback = fallback.with_columns(pl.lit(None).cast(pl.Utf8).alias("category"))
+    df_scored = preds.filter(
+        (pl.col("kiosk_id") == kiosk_id) &
+        (pl.col("anchor_product_id") == anchor_product_id)
+    )
+
+    if df_scored.is_empty():
+        LOGGER.warning("No predictions for kiosk+anchor. Using popularity fallback.")
+        df_scored = (
+            fallback
+            .with_columns(
+                pl.lit(kiosk_id).alias("kiosk_id"),
+                pl.lit(anchor_product_id).alias("anchor_product_id"),
+            )
+            .select(["kiosk_id", "anchor_product_id", "candidate_product_id", "category", "score"])
+        )
+
+    final = apply_bundle_rules(
+        df_scored,
+        products,
+        kiosk_id=kiosk_id,
+        anchor_product_id=anchor_product_id,
+        included_products=included_products,
+        excluded_products=excluded_products,
+        allowed_categories=allowed_categories,
+        n_group_key=n_group_key,
+        n_min=n_min,
+        n_max=n_max,
+    )
+
+    if final.height < n_min:
+        final = _fill_with_popularity(
+            final,
+            fallback,
+            kiosk_id=kiosk_id,
+            anchor_product_id=anchor_product_id,
+            excluded_products=excluded_products,
+            allowed_categories=allowed_categories,
+            n_max=n_max,
+        )
+    if final.height == 0:
+        LOGGER.warning("Bundle is empty after fallback; returning raw popularity fallback.")
+        final = (
+            fallback
+            .with_columns(
+                [
+                    pl.lit(kiosk_id).alias("kiosk_id"),
+                    pl.lit(anchor_product_id).alias("anchor_product_id"),
+                ]
+            )
+            .select(["kiosk_id", "anchor_product_id", "candidate_product_id", "category", "score"])
+            .head(n_max)
+        )
+    return final
 
 
 def main() -> None:
@@ -149,27 +272,20 @@ def main() -> None:
     products_path = Path(cfg.get("products_path", EXTERNAL_DIR / "products_v2.csv"))
 
     preds = load_parquet(predictions_path, label="Predictions parquet")
-    products = load_products_csv(products_path)
-
-    df_scored = preds.filter(
-        (pl.col("kiosk_id") == kiosk_id) &
-        (pl.col("anchor_product_id") == anchor_product_id)
+    fallback = load_parquet(popularity_path, label="Popularity fallback")
+    products = None
+    need_products = (
+        "category" not in preds.columns or
+        (included_products and "category" not in preds.columns) or
+        (allowed_categories and "category" not in preds.columns) or
+        (n_group_key and "category" not in preds.columns)
     )
+    if need_products:
+        products = load_products_csv(products_path)
 
-    if df_scored.is_empty():
-        LOGGER.warning("No predictions for kiosk+anchor. Using popularity fallback.")
-        fallback = load_parquet(popularity_path, label="Popularity fallback")
-        df_scored = (
-            fallback
-            .with_columns(
-                pl.lit(kiosk_id).alias("kiosk_id"),
-                pl.lit(anchor_product_id).alias("anchor_product_id"),
-            )
-            .select(["kiosk_id", "anchor_product_id", "candidate_product_id", "score"])
-        )
-
-    final = apply_bundle_rules(
-        df_scored,
+    final = build_bundle(
+        preds,
+        fallback,
         products,
         kiosk_id=kiosk_id,
         anchor_product_id=anchor_product_id,

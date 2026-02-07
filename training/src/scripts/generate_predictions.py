@@ -124,6 +124,13 @@ def main() -> None:
 
     scores = ranker.predict(feature_table.select(model_feature_cols).to_pandas())
     scored = feature_table.with_columns(pl.Series("score", scores))
+    prod_map = products.select(
+        [
+            pl.col("productid").cast(pl.Utf8).alias("candidate_product_id"),
+            pl.col("category").cast(pl.Utf8),
+        ]
+    ).unique(subset=["candidate_product_id"])
+    scored = scored.join(prod_map, on="candidate_product_id", how="left")
 
     score_range = scored.select(
         pl.col("score").min().alias("min"),
@@ -153,7 +160,7 @@ def main() -> None:
         .sort(["kiosk_id", "anchor_product_id", "score"], descending=[False, False, True])
         .group_by(["kiosk_id", "anchor_product_id"])
         .head(catalog_top_k)
-        .select(["kiosk_id", "anchor_product_id", "candidate_product_id", "score"])
+        .select(["kiosk_id", "anchor_product_id", "candidate_product_id", "category", "score"])
     )
 
     save_parquet(final, predictions_path)
@@ -168,7 +175,8 @@ def main() -> None:
         .select(["product_id", "purchase_count"])
         .rename({"product_id": "candidate_product_id"})
         .with_columns(pl.col("purchase_count").cast(pl.Float64).alias("score"))
-        .select(["candidate_product_id", "score"])
+        .join(prod_map, on="candidate_product_id", how="left")
+        .select(["candidate_product_id", "category", "score"])
     )
     save_parquet(popularity, popularity_path)
     LOGGER.info("Saved cold-start popularity fallback to %s", popularity_path)

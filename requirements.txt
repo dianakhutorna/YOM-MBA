@@ -12,3 +12,5 @@ pyarrow
 xgboost
 pytest
 pyyaml
+fastapi
+uvicorn
