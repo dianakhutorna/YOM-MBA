@@ -143,6 +143,11 @@ def _fill_with_popularity(
         if min_score is None:
             min_score = 0.0
         fallback_df = fallback_df.with_columns(pl.lit(min_score - 1.0).alias("score"))
+    else:
+        # No model scores; use rank-based small negative scores to keep scale reasonable
+        fallback_df = fallback_df.with_columns(
+            (-pl.arange(0, pl.len()).cast(pl.Float64)).alias("score")
+        )
     if "category" not in fallback_df.columns:
         fallback_df = fallback_df.with_columns(pl.lit(None).cast(pl.Utf8).alias("category"))
 
@@ -163,6 +168,17 @@ def _fill_with_popularity(
     if need == 0:
         return df
     fallback_df = fallback_df.sort("score", descending=True).head(need)
+    # Align schemas before concat
+    if df.height > 0:
+        base_cols = df.columns
+    else:
+        base_cols = ["kiosk_id", "anchor_product_id", "candidate_product_id", "category", "score"]
+    for col in base_cols:
+        if col not in fallback_df.columns:
+            fallback_df = fallback_df.with_columns(pl.lit(None).alias(col))
+    fallback_df = fallback_df.select(base_cols)
+    if df.height > 0:
+        df = df.select(base_cols)
     out = pl.concat([df, fallback_df], how="vertical").sort("score", descending=True)
     return out
 

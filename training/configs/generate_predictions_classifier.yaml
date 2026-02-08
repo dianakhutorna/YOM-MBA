@@ -1,0 +1,21 @@
+orders_path: training/data/interim/orders_sample.parquet
+products_path: training/data/external/products_v2.csv
+commerces_path: training/data/external/commerces.csv
+model_path: training/models/lgbm_classifier.txt
+features_config_path: training/configs/features.yaml
+
+predictions_path: training/data/interim/predictions_classifier.parquet
+popularity_path: training/data/interim/popularity_fallback_classifier.parquet
+
+train_ratio: 0.7
+val_ratio: 0.1
+test_ratio: 0.2
+inference_last_n_days: 30
+
+min_cooc: 3
+min_lift: 2.0
+top_k_candidates: 100
+catalog_top_k: 100
+candidate_generator: mba
+hybrid_pop_top_k_global: 50
+hybrid_pop_top_k_category: 50
