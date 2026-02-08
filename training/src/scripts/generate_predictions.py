@@ -84,6 +84,18 @@ def main() -> None:
         )
 
     baskets_train = build_baskets(train_orders)
+
+    ranker = lgb.Booster(model_file=str(model_path))
+    model_feature_cols = _load_feature_list(model_path, ranker)
+    if not model_feature_cols:
+        raise ValueError("Model feature list is empty; retrain to persist features.")
+
+    if "pop_score" in model_feature_cols and candidate_generator != "hybrid":
+        LOGGER.warning(
+            "Model expects pop_score but candidate_generator=%s. Switching to hybrid.",
+            candidate_generator,
+        )
+        candidate_generator = "hybrid"
     if candidate_generator == "hybrid":
         topk_candidates = generate_candidates_hybrid(
             baskets_train,
@@ -119,11 +131,6 @@ def main() -> None:
         commerces=commerces,
         config=feature_config,
     )
-
-    ranker = lgb.Booster(model_file=str(model_path))
-    model_feature_cols = _load_feature_list(model_path, ranker)
-    if not model_feature_cols:
-        raise ValueError("Model feature list is empty; retrain to persist features.")
 
     missing_cols = [col for col in model_feature_cols if col not in feature_table.columns]
     if missing_cols:

@@ -84,13 +84,22 @@ def add_popularity_features(
         )
 
     # ----------------------------------
-    # Global popularity
+    # Store popularity (base aggregation)
+    # ----------------------------------
+    pop_store = (
+        orders_long
+        .group_by([kiosk_col, product_col])
+        .len()
+        .rename({"len": "pop_store"})
+    )
+
+    # ----------------------------------
+    # Global popularity (aggregate from store-level counts)
     # ----------------------------------
     pop_global = (
-        orders_long
+        pop_store
         .group_by(product_col)
-        .len()
-        .rename({"len": "pop_global"})
+        .agg(pl.col("pop_store").sum().alias("pop_global"))
     )
 
     # ----------------------------------
@@ -111,16 +120,6 @@ def add_popularity_features(
         .group_by([region_col, product_col])
         .len()
         .rename({"len": "pop_region"})
-    )
-
-    # ----------------------------------
-    # Store popularity
-    # ----------------------------------
-    pop_store = (
-        orders_long
-        .group_by([kiosk_col, product_col])
-        .len()
-        .rename({"len": "pop_store"})
     )
 
     # ----------------------------------

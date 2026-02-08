@@ -58,46 +58,33 @@ def add_behavioral_features(
     )
 
     # ----------------------------------
-    # pop_store: kiosk × candidate
+    # kiosk × product counts (single aggregation)
     # ----------------------------------
-    pop_store = (
+    kiosk_product_counts = (
         orders_long
         .group_by([kiosk_col, product_col])
         .len()
-        .rename({"len": "pop_store"})
+        .rename({"len": "kiosk_product_count"})
     )
 
-    # ----------------------------------
-    # Join pop_store for candidate
-    # ----------------------------------
+    # pop_store for candidate
     ft = feature_table.join(
-        pop_store,
+        kiosk_product_counts.rename({"kiosk_product_count": "pop_store"}),
         left_on=[kiosk_col, "candidate_product_id"],
         right_on=[kiosk_col, product_col],
         how="left",
     )
 
-    # ----------------------------------
     # kiosk_bought_candidate_before (binary)
-    # ----------------------------------
     ft = ft.with_columns(
         (pl.col("pop_store") > 0)
         .cast(pl.Int8)
         .alias("kiosk_bought_candidate_before")
     )
 
-    # ----------------------------------
-    # anchor_kiosk_frequency
-    # ----------------------------------
-    anchor_freq = (
-        orders_long
-        .group_by([kiosk_col, product_col])
-        .len()
-        .rename({"len": "anchor_kiosk_frequency"})
-    )
-
+    # anchor_kiosk_frequency (reuse same counts)
     ft = ft.join(
-        anchor_freq,
+        kiosk_product_counts.rename({"kiosk_product_count": "anchor_kiosk_frequency"}),
         left_on=[kiosk_col, "anchor_product_id"],
         right_on=[kiosk_col, product_col],
         how="left",

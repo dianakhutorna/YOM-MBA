@@ -327,16 +327,9 @@ def run(config: TrainingPipelineConfig) -> None:
         if df.height == 0:
             return df
         df = _add_query_id(df)
-        pdf = df.to_pandas()
-        rng = np.random.default_rng(seed)
-        parts = []
-        for _, g in pdf.groupby("query_id", sort=False):
-            idx = g.index.to_numpy()
-            rng.shuffle(idx)
-            parts.append(pdf.loc[idx])
-        if not parts:
-            return df
-        return pl.from_pandas(pd.concat(parts, axis=0, ignore_index=True))
+        # Polars-native shuffle to avoid pandas memory blowups
+        df = df.with_columns(pl.arange(0, pl.len()).shuffle(seed=seed).alias("_rand"))
+        return df.sort(["query_id", "_rand"]).drop("_rand")
 
     def _sample_negatives(df: pl.DataFrame, max_neg_per_group: int, seed: int = 42) -> pl.DataFrame:
         if max_neg_per_group <= 0:
