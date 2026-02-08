@@ -531,22 +531,28 @@ def run(config: TrainingPipelineConfig) -> None:
         "objective": "lambdarank",
         "metric": "ndcg",
         "ndcg_eval_at": eval_ks,
-        "learning_rate": 0.05,
-        "num_leaves": 63,
-        "min_data_in_leaf": 50,
-        "feature_fraction": 0.8,
-        "bagging_fraction": 0.8,
+        # More conservative settings for larger/hybrid candidate sets
+        "learning_rate": 0.03,
+        "num_leaves": 31,
+        "max_depth": 8,
+        "min_data_in_leaf": 200,
+        "min_gain_to_split": 0.1,
+        "lambda_l1": 0.0,
+        "lambda_l2": 1.0,
+        "feature_fraction": 0.7,
+        "bagging_fraction": 0.7,
         "bagging_freq": 1,
+        "seed": 42,
         "verbosity": -1,
     }
 
     booster = lgb.train(
         params=params,
         train_set=train_set,
-        num_boost_round=1000,
+        num_boost_round=2000,
         valid_sets=[train_set, valid_set],
         valid_names=["train", "valid"],
-        callbacks=[lgb.early_stopping(50), lgb.log_evaluation(period=50)],
+        callbacks=[lgb.early_stopping(100), lgb.log_evaluation(period=50)],
     )
 
     # ---------- Feature importance ----------
