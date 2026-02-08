@@ -11,6 +11,7 @@ train_ratio: 0.7
 val_ratio: 0.1
 test_ratio: 0.2
 inference_last_n_days: 30
+inference_max_rows: 300000
 
 min_cooc: 3
 min_lift: 2.0
@@ -19,3 +20,5 @@ catalog_top_k: 100
 candidate_generator: mba
 hybrid_pop_top_k_global: 50
 hybrid_pop_top_k_category: 50
+normalize_popularity: true
+query_sample_n: 100000

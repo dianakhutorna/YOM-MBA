@@ -55,6 +55,8 @@ def main() -> None:
     val_ratio = float(cfg.get("val_ratio", 0.1))
     test_ratio = float(cfg.get("test_ratio", 0.1))
     inference_last_n_days = int(cfg.get("inference_last_n_days", 0))
+    inference_max_rows = int(cfg.get("inference_max_rows", 0))
+    query_sample_n = int(cfg.get("query_sample_n", 0))
 
     min_cooc = int(cfg.get("min_cooc", 3))
     min_lift = float(cfg.get("min_lift", 2.0))
@@ -63,6 +65,7 @@ def main() -> None:
     candidate_generator = str(cfg.get("candidate_generator", "mba")).lower().strip()
     hybrid_pop_top_k_global = int(cfg.get("hybrid_pop_top_k_global", 50))
     hybrid_pop_top_k_category = int(cfg.get("hybrid_pop_top_k_category", 50))
+    normalize_popularity = bool(cfg.get("normalize_popularity", True))
 
     orders = load_orders_parquet(orders_path)
     products = load_products_csv(products_path)
@@ -82,6 +85,8 @@ def main() -> None:
             val_ratio=val_ratio,
             test_ratio=test_ratio,
         )
+    if inference_max_rows and train_orders.height > inference_max_rows:
+        train_orders = train_orders.tail(inference_max_rows)
 
     baskets_train = build_baskets(train_orders)
 
@@ -114,9 +119,20 @@ def main() -> None:
             min_lift=min_lift,
         )
 
+    queries = None
+    if query_sample_n and query_sample_n > 0:
+        queries = (
+            baskets_train
+            .select(["kiosk_id", "products"])
+            .explode("products")
+            .rename({"products": "anchor_product_id"})
+            .unique()
+            .sample(n=query_sample_n, seed=42)
+        )
     feature_table = build_feature_table(
         baskets=baskets_train,
         topk_candidates=topk_candidates,
+        queries=queries,
     )
 
     feature_config = (
@@ -206,10 +222,26 @@ def main() -> None:
         .head(catalog_top_k)
         .select(["product_id", "purchase_count"])
         .rename({"product_id": "candidate_product_id"})
-        .with_columns(pl.col("purchase_count").cast(pl.Float64).alias("score"))
         .join(prod_map, on="candidate_product_id", how="left")
-        .select(["candidate_product_id", "category", "score"])
     )
+    if normalize_popularity:
+        pop = popularity.with_columns(pl.col("purchase_count").cast(pl.Float64).log1p().alias("_pop"))
+        pop_min = pop.select(pl.col("_pop").min()).item()
+        pop_max = pop.select(pl.col("_pop").max()).item()
+        score_min, score_max = float(score_range[0]), float(score_range[1])
+        if pop_min is None or pop_max is None or pop_min == pop_max:
+            pop = pop.with_columns(pl.lit(score_min).alias("score"))
+        else:
+            pop = pop.with_columns(
+                (
+                    (pl.col("_pop") - pop_min) / (pop_max - pop_min) * (score_max - score_min) + score_min
+                ).alias("score")
+            )
+        popularity = pop.drop("_pop")
+        LOGGER.info("Popularity fallback normalized to model score range.")
+    else:
+        popularity = popularity.with_columns(pl.col("purchase_count").cast(pl.Float64).alias("score"))
+    popularity = popularity.select(["candidate_product_id", "category", "score"])
     save_parquet(popularity, popularity_path)
     LOGGER.info("Saved cold-start popularity fallback to %s", popularity_path)
 
