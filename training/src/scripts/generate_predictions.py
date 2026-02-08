@@ -11,10 +11,12 @@ import polars as pl
 from training.src.config import FeatureConfig, load_yaml_config
 from training.src.features import add_all_features
 from training.src.io import load_orders_parquet, load_products_csv, load_commerces_csv, save_parquet
+from training.src.logging_utils import setup_logging
 from training.src.paths import EXTERNAL_DIR, INTERIM_DIR, MODELS_DIR
 from training.src.steps.build_baskets import build_baskets
 from training.src.steps.build_feature_table import build_feature_table
 from training.src.steps.generate_candidates import generate_candidates
+from training.src.steps.generate_candidates_hybrid import generate_candidates_hybrid
 from training.src.steps.select_top_k_candidates import select_top_k_candidates
 from training.src.steps.split_orders import split_orders_by_time
 
@@ -37,7 +39,7 @@ def main() -> None:
     parser.add_argument("--config", default="training/configs/generate_predictions.yaml")
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
+    setup_logging("generate_predictions")
 
     cfg = load_yaml_config(Path(args.config))
     orders_path = Path(cfg.get("orders_path", INTERIM_DIR / "orders_sample.parquet"))
@@ -57,6 +59,9 @@ def main() -> None:
     min_lift = float(cfg.get("min_lift", 2.0))
     top_k_candidates = int(cfg.get("top_k_candidates", 250))
     catalog_top_k = int(cfg.get("catalog_top_k", 100))
+    candidate_generator = str(cfg.get("candidate_generator", "mba")).lower().strip()
+    hybrid_pop_top_k_global = int(cfg.get("hybrid_pop_top_k_global", 50))
+    hybrid_pop_top_k_category = int(cfg.get("hybrid_pop_top_k_category", 50))
 
     orders = load_orders_parquet(orders_path)
     products = load_products_csv(products_path)
@@ -70,12 +75,23 @@ def main() -> None:
     )
 
     baskets_train = build_baskets(train_orders)
-    candidates = generate_candidates(baskets_train, min_cooc=min_cooc)
-    topk_candidates = select_top_k_candidates(
-        candidates,
-        k=top_k_candidates,
-        min_lift=min_lift,
-    )
+    if candidate_generator == "hybrid":
+        topk_candidates = generate_candidates_hybrid(
+            baskets_train,
+            products=products,
+            min_cooc=min_cooc,
+            min_lift=min_lift,
+            top_k=top_k_candidates,
+            pop_top_k_global=hybrid_pop_top_k_global,
+            pop_top_k_category=hybrid_pop_top_k_category,
+        )
+    else:
+        candidates = generate_candidates(baskets_train, min_cooc=min_cooc)
+        topk_candidates = select_top_k_candidates(
+            candidates,
+            k=top_k_candidates,
+            min_lift=min_lift,
+        )
 
     feature_table = build_feature_table(
         baskets=baskets_train,

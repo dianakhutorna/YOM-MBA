@@ -15,3 +15,6 @@ min_cooc: 3
 min_lift: 2.0
 top_k_candidates: 100
 catalog_top_k: 100
+candidate_generator: mba
+hybrid_pop_top_k_global: 50
+hybrid_pop_top_k_category: 50

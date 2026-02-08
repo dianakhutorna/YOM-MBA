@@ -13,11 +13,13 @@ import numpy as np
 from training.src.config import load_yaml_config
 from training.src.features import add_all_features
 from training.src.io import load_orders_csv_sample, load_products_csv, load_commerces_csv, save_parquet
+from training.src.logging_utils import setup_logging
 from training.src.paths import RAW_DIR, INTERIM_DIR, EXTERNAL_DIR, MODELS_DIR
 from training.src.steps.build_baskets import build_baskets
 from training.src.steps.build_feature_table import build_feature_table
 from training.src.steps.build_labels import build_labels
 from training.src.steps.generate_candidates import generate_candidates
+from training.src.steps.generate_candidates_hybrid import generate_candidates_hybrid
 from training.src.steps.preprocessing import preprocess_orders
 from training.src.steps.select_top_k_candidates import select_top_k_candidates
 from training.src.steps.split_orders import split_orders_by_time
@@ -56,6 +58,9 @@ class TrainingPipelineConfig:
     eval_ks: list[int]
     eval_extra_neg_per_query: int
     features_config_path: Path | None
+    candidate_generator: str
+    hybrid_pop_top_k_global: int
+    hybrid_pop_top_k_category: int
 
     @classmethod
     def from_yaml(cls, path: Path) -> "TrainingPipelineConfig":
@@ -84,14 +89,14 @@ class TrainingPipelineConfig:
             eval_ks=[int(k) for k in data.get("eval_ks", [20])],
             eval_extra_neg_per_query=int(data.get("eval_extra_neg_per_query", 0)),
             features_config_path=Path(data["features_config_path"]) if data.get("features_config_path") else None,
+            candidate_generator=str(data.get("candidate_generator", "mba")),
+            hybrid_pop_top_k_global=int(data.get("hybrid_pop_top_k_global", 50)),
+            hybrid_pop_top_k_category=int(data.get("hybrid_pop_top_k_category", 50)),
         )
 
 
 def run(config: TrainingPipelineConfig) -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s | %(levelname)s | %(message)s",
-    )
+    setup_logging("training")
 
     per_file = max(1, config.n_rows // len(config.raw_paths))
     LOGGER.info(
@@ -114,6 +119,9 @@ def run(config: TrainingPipelineConfig) -> None:
     clean_orders = preprocess_orders(raw_orders)
     save_parquet(clean_orders, config.interim_path)
     LOGGER.info("Saved interim orders to %s", config.interim_path)
+
+    products = load_products_csv(config.products_path)
+    commerces = load_commerces_csv(config.commerces_path)
 
     train_orders, val_orders, test_holdout_orders = split_orders_by_time(
         clean_orders,
@@ -160,12 +168,24 @@ def run(config: TrainingPipelineConfig) -> None:
         )
 
     baskets_train = build_baskets(train_orders)
-    candidates = generate_candidates(baskets_train, min_cooc=config.min_cooc)
-    topk_candidates = select_top_k_candidates(
-        candidates,
-        k=config.top_k,
-        min_lift=config.min_lift,
-    )
+    candidate_generator = config.candidate_generator.lower().strip()
+    if candidate_generator == "hybrid":
+        topk_candidates = generate_candidates_hybrid(
+            baskets_train,
+            products=products,
+            min_cooc=config.min_cooc,
+            min_lift=config.min_lift,
+            top_k=config.top_k,
+            pop_top_k_global=config.hybrid_pop_top_k_global,
+            pop_top_k_category=config.hybrid_pop_top_k_category,
+        )
+    else:
+        candidates = generate_candidates(baskets_train, min_cooc=config.min_cooc)
+        topk_candidates = select_top_k_candidates(
+            candidates,
+            k=config.top_k,
+            min_lift=config.min_lift,
+        )
 
     train_queries = _build_queries(train_orders)
     val_queries = _build_queries(val_orders)
@@ -187,8 +207,6 @@ def run(config: TrainingPipelineConfig) -> None:
         queries=test_queries,
     )
 
-    products = load_products_csv(config.products_path)
-    commerces = load_commerces_csv(config.commerces_path)
     feature_config = (
         FeatureConfig.from_yaml(config.features_config_path)
         if config.features_config_path and config.features_config_path.exists()

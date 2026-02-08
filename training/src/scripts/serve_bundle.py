@@ -8,6 +8,7 @@ import polars as pl
 
 from training.src.config import load_yaml_config
 from training.src.io import load_parquet, load_products_csv
+from training.src.logging_utils import setup_logging
 from training.src.paths import EXTERNAL_DIR, INTERIM_DIR
 
 
@@ -250,7 +251,7 @@ def main() -> None:
     parser.add_argument("--n-max", type=int, default=20)
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
+    setup_logging("serve_bundle")
 
     cfg = load_yaml_config(Path(args.config)) if args.config else {}
 
