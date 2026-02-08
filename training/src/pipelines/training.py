@@ -61,6 +61,10 @@ class TrainingPipelineConfig:
     candidate_generator: str
     hybrid_pop_top_k_global: int
     hybrid_pop_top_k_category: int
+    lgbm_params: dict
+    num_boost_round: int
+    early_stopping_rounds: int
+    eval_log_path: Path | None
 
     @classmethod
     def from_yaml(cls, path: Path) -> "TrainingPipelineConfig":
@@ -92,6 +96,10 @@ class TrainingPipelineConfig:
             candidate_generator=str(data.get("candidate_generator", "mba")),
             hybrid_pop_top_k_global=int(data.get("hybrid_pop_top_k_global", 50)),
             hybrid_pop_top_k_category=int(data.get("hybrid_pop_top_k_category", 50)),
+            lgbm_params=dict(data.get("lgbm_params", {})),
+            num_boost_round=int(data.get("num_boost_round", 2000)),
+            early_stopping_rounds=int(data.get("early_stopping_rounds", 100)),
+            eval_log_path=Path(data["eval_log_path"]) if data.get("eval_log_path") else None,
         )
 
 
@@ -545,15 +553,48 @@ def run(config: TrainingPipelineConfig) -> None:
         "seed": 42,
         "verbosity": -1,
     }
+    if config.lgbm_params:
+        params.update(config.lgbm_params)
 
+    evals_result: dict = {}
     booster = lgb.train(
         params=params,
         train_set=train_set,
-        num_boost_round=2000,
+        num_boost_round=config.num_boost_round,
         valid_sets=[train_set, valid_set],
         valid_names=["train", "valid"],
-        callbacks=[lgb.early_stopping(100), lgb.log_evaluation(period=50)],
+        callbacks=[
+            lgb.early_stopping(config.early_stopping_rounds),
+            lgb.log_evaluation(period=50),
+            lgb.record_evaluation(evals_result),
+        ],
     )
+
+    if config.eval_log_path:
+        config.eval_log_path.parent.mkdir(parents=True, exist_ok=True)
+        rows = []
+        for dataset, metrics in evals_result.items():
+            for metric_name, values in metrics.items():
+                for idx, val in enumerate(values, start=1):
+                    rows.append(
+                        {
+                            "iteration": idx,
+                            "dataset": dataset,
+                            "metric": metric_name,
+                            "value": val,
+                        }
+                    )
+        if rows:
+            pl.DataFrame(rows).write_csv(config.eval_log_path)
+            LOGGER.info("Eval curves saved to %s", config.eval_log_path)
+
+    if booster.best_iteration:
+        best_iter = booster.best_iteration
+        best = {}
+        for dataset, metrics in evals_result.items():
+            best[dataset] = {m: metrics[m][best_iter - 1] for m in metrics if len(metrics[m]) >= best_iter}
+        LOGGER.info("Best iteration: %s", best_iter)
+        LOGGER.info("Best metrics: %s", best)
 
     # ---------- Feature importance ----------
     imp_df = pd.DataFrame(

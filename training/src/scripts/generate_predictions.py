@@ -54,6 +54,7 @@ def main() -> None:
     train_ratio = float(cfg.get("train_ratio", 0.8))
     val_ratio = float(cfg.get("val_ratio", 0.1))
     test_ratio = float(cfg.get("test_ratio", 0.1))
+    inference_last_n_days = int(cfg.get("inference_last_n_days", 0))
 
     min_cooc = int(cfg.get("min_cooc", 3))
     min_lift = float(cfg.get("min_lift", 2.0))
@@ -67,12 +68,20 @@ def main() -> None:
     products = load_products_csv(products_path)
     commerces = load_commerces_csv(commerces_path)
 
-    train_orders, _, _ = split_orders_by_time(
-        orders,
-        train_ratio=train_ratio,
-        val_ratio=val_ratio,
-        test_ratio=test_ratio,
-    )
+    if inference_last_n_days and "order_dt" in orders.columns:
+        max_dt = orders.select(pl.col("order_dt").max()).item()
+        if max_dt is not None:
+            cutoff = max_dt - pl.duration(days=inference_last_n_days)
+            train_orders = orders.filter(pl.col("order_dt") >= cutoff)
+        else:
+            train_orders = orders
+    else:
+        train_orders, _, _ = split_orders_by_time(
+            orders,
+            train_ratio=train_ratio,
+            val_ratio=val_ratio,
+            test_ratio=test_ratio,
+        )
 
     baskets_train = build_baskets(train_orders)
     if candidate_generator == "hybrid":

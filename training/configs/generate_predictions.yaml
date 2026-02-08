@@ -10,6 +10,7 @@ popularity_path: training/data/interim/popularity_fallback.parquet
 train_ratio: 0.7
 val_ratio: 0.1
 test_ratio: 0.2
+inference_last_n_days: 30
 
 min_cooc: 3
 min_lift: 2.0

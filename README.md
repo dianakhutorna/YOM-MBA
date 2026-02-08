@@ -88,3 +88,12 @@ python -m training.src.scripts.serve_bundle \
   --n-group-key 3 \
   --n-min 4 \
   --n-max 10
+
+python -m training.src.scripts.serve_bundle \
+  --kiosk-id f6661bcc63a0daf6f2496497bc368347 \
+  --anchor-product-id 006006-001 \        
+  --n-group-key 3 \
+  --n-min 4 \
+  --n-max 10
+
+  
