@@ -1,7 +1,0 @@
-extends: base_train.yaml
-
-# Use minimal features configuration
-features_config_path: training/configs/features_minimal.yaml
-
-# Minimal features for testing
-# Using: cosine_sim, pop_store, kiosk_product_cnt, cand_is_new_for_kiosk, channels, regions

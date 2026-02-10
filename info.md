@@ -1,109 +1,84 @@
-Три этапа: Обучение → Инференс → Сервинг
+Three stages: Training → Generation of Predictions → Serving
 ┌─────────────────────────────────────────────────────────────────┐
 │                     TRAINING PIPELINE                           │
-│                    training.py (ОДИН РАЗ)                       │
+│                   training.py (ONCE)                            │
 ├─────────────────────────────────────────────────────────────────┤
-│ 1. Загрузить raw CSV                                            │
+│ 1. Load raw CSV                                                 │
 │ 2. Preprocess → interim orders.parquet                          │
-│ 3. Split на train/val/test (by time)                            │
-│ 4. Build baskets из train_orders                                │
+│ 3. Split into train/val/test (by time)                          │
+│ 4. Build baskets from train_orders                              │
 │ 5. Generate candidates (MBA: cooc, lift, cosine_sim)            │
 │ 6. Build feature table (join kiosk×anchor + candidates)         │
 │ 7. Add features (product, behavioral, categorical, etc.)        │
-│ 8. Build labels (из test_orders)                                │
-│ 9. Train LightGBM lambdarank с eval на val/test                 │
-│ 10. Сохранить модель + feature list                             │
-│                                                                  │
-│ OUTPUT:                                                          │
-│  - lgbm_ranker.txt (модель)                                      │
-│  - lgbm_ranker.features.json (список колонок для инференса)      │
-│  - orders_sample.parquet (очищенные заказы)                      │
-│  - logs/ (метрики обучения)                                      │
+│ 8. Build labels (from test_orders)                              │
+│ 9. Train LightGBM lambdarank with eval on val/test              │
+│ 10. Save model + feature list                                   │
+│                                                                 │
+│ OUTPUT:                                                         │
+│  - lgbm_ranker.txt (model)                                      │
+│  - lgbm_ranker.features.json (inference feature list)           │
+│  - orders_sample.parquet (cleaned orders)                       │
+│  - logs/ (training metrics)                                     │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│               INFERENCE / BATCH SCORING                          │
-│            generate_predictions.py (ЧАСТО)                       │
+│               INFERENCE / BATCH SCORING                         │
+│            generate_predictions.py (OFTEN)                      │
 ├─────────────────────────────────────────────────────────────────┤
-│ 1. Загрузить сохранённую модель (lgbm_ranker.txt)               │
-│ 2. Загрузить сохранённый feature list (features.json)           │
-│ 3. Загрузить актуальные заказы (из БД или interim)              │
-│ 4. Build baskets (из этих заказов)                              │
-│ 5. Generate candidates (те же MBA метрики)                      │
+│ 1. Load saved model (lgbm_ranker.txt)                           │
+│ 2. Load feature list (features.json)                            │
+│ 3. Load recent orders (DB or interim)                           │
+│ 4. Build baskets (from those orders)                            │
+│ 5. Generate candidates (same MBA metrics)                       │
 │ 6. Build feature table                                          │
-│ 7. Add features (с ТЕМИ ЖЕ флагами что и при обучении!)         │
-│ 8. Выравнять колонки:                                           │
-│    - Убрать лишние признаки                                     │
-│    - Добавить missing признаки (нули) ⚠️ ОСТОРОЖНО!             │
+│ 7. Add features (SAME FLAGS as training!)                       │
+│ 8. Align columns:                                               │
+│    - Drop extra features                                        │
+│    - Add missing features (zeros)    CAREFUL!                   │
 │ 9. Predict scores (LightGBM)                                    │
-│ 10. Сохранить predictions.parquet                               │
-│ 11. Build popularity fallback (для холодного старта)            │
-│                                                                  │
-│ OUTPUT:                                                          │
-│  - predictions.parquet (kiosk, anchor, candidate, score)         │
-│  - popularity_fallback.parquet (топ товары по частоте)          │
+│ 10. Save predictions.parquet                                    │
+│ 11. Build popularity fallback (cold start)                      │
+│                                                                 │
+│ OUTPUT:                                                         │
+│  - predictions.parquet (kiosk, anchor, candidate, score)        │
+│  - popularity_fallback.parquet (top products by frequency)      │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                    SERVING (в production)                        │
-│              serve_bundle.py (ПОСТОЯННО онлайн)                 │
+│                    SERVING (production)                         │
+│              serve_bundle.py (ALWAYS ONLINE)                    │
 ├─────────────────────────────────────────────────────────────────┤
-│ 1. Загрузить predictions.parquet в память (индекс по kiosk_id)  │
-│ 2. На каждый запрос:                                            │
-│    - Get kiosk_id + anchor_product_id (из контекста)            │
-│    - Lookup в predictions → top-K candidates + scores           │
-│    - Если нет в predictions (холодный старт):                   │
-│      * Fallback к popularity_fallback.parquet                   │
-│    - Вернуть JSON с рекомендациями                              │
-│                                                                  │
-│ OUTPUT:                                                          │
-│  - JSON API ответ (для каждого запроса <1ms)                    │
+│ 1. Load predictions.parquet into memory (index by kiosk_id)     │
+│ 2. For each request:                                            │
+│    - Get kiosk_id + anchor_product_id (from context)            │
+│    - Lookup in predictions → top-K candidates + scores          │
+│    - If missing (cold start):                                   │
+│      * Fallback to popularity_fallback.parquet                  │
+│    - Return JSON recommendations                                │
+│                                                                 │
+│ OUTPUT:                                                         │
+│  - JSON API response (<1ms per request)                         │
 └─────────────────────────────────────────────────────────────────┘
 
-Что тренировать один раз? Что часто?
+What runs once vs. often?
 
-training.py	🔴 Редко (еженедельно/ежемесячно)	
-Затратно: preprocess + candidates + features + train; нужны новые данные
-generate_predictions.py	🟡 Часто (ежедневно/еженедельно)	
-Быстро: используем готовую модель, только переоценяем кандидаты с актуальными данными
-serve_bundle.py	🟢 Постоянно (в prod 24/7)	Просто lookup в памяти, <1ms на запрос; обновляется когда generate_predictions создаст новый parquet
+training.py    🔴 Rare (weekly/monthly)
+Costly: preprocess + candidates + features + train; needs fresh data
 
-Ключевые различия
-training.py (Один раз)
-🔧 Строит кандидатов с нуля из train_orders
-📚 Обучает модель на исторических данных
-💾 Сохраняет модель + feature list
-⏱️ Занимает часы (в зависимости от объёма данных)
+generate_predictions.py    🟡 Often (daily/weekly)
+Fast: reuse trained model, re-score candidates on recent data
 
-# Редко, когда нужны новые фичи или переобучение
-python -m training.src.scripts.run_training_pipeline \
-  --config training/configs/training_pipeline.yaml
+serve_bundle.py    🟢 Always (prod 24/7)
+Simple in-memory lookup, <1ms per request; refreshed when new parquet is generated
 
-generate_predictions.py (Часто)
-🔄 Переиспользует модель из training.py
-🎯 Переоценивает кандидатов на новых/актуальных данных
-📊 Генерирует predictions.parquet для сервинга
-⏱️ Занимает минуты (только predict, без обучения)
 
-# Часто, при обновлении данных (ежедневно?)
-python -m training.src.scripts.generate_predictions \
-  --config training/configs/generate_predictions.yaml
+⚠️ Critical points
 
-serve_bundle.py (Постоянно)
-🚀 Загружает predictions.parquet в память один раз
-⚡ Отвечает на запросы (<1ms)
-🔄 Обновляется когда generate_predictions создаёт новый parquet
-⏱️ Нет вычислений, только lookups
+Feature consistency: generate_predictions MUST use the SAME feature flags as training (features_config_path), otherwise:
 
-# Постоянно работает
-python training/src/scripts/serve_bundle.py --model lgbm_ranker.txt
+Missing features → zeros inserted ❌
+Zero-only features → model breaks ❌
 
-⚠️ Критические моменты
+Candidate alignment: top_k in training vs top_k_candidates in generate_predictions must match, otherwise candidates differ.
 
-Feature consistency: generate_predictions ДОЛЖЕН использовать ТЕ ЖЕ флаги признаков как при обучении (features_config_path), иначе:
-
-Missing features → вставляются нули ❌
-Zero-only features → сломана модель ❌
-Candidate alignment: top_k в training vs top_k_candidates в generate_predictions должны быть равны, иначе разные кандидаты.
-
-Split ratios: Если меняешь train_ratio между обучением и инференсом, кандидаты будут другие.
+Split ratios: if you change train_ratio between training and inference, candidates will differ.

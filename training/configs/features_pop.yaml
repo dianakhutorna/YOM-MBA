@@ -1,7 +1,0 @@
-include_product_features: true
-include_kiosk_features: true
-include_behavioral_features: true
-include_personalization_features: true
-include_popularity_features: true
-encode_channel: true
-encode_region: true
