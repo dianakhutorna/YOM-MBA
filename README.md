@@ -47,11 +47,6 @@ training/
 - Python **3.11**
 - pip **25.3**
 
-Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
 ---
 
 ## Setup
@@ -98,8 +93,12 @@ training/data/raw/
 Run the training pipeline:
 
 ```bash
-./venv/bin/python -m training.src.scripts.run_training_pipeline \
-  --config training/configs/training_pipeline.yaml
+# Mac / Linux
+./venv/bin/python -m training.src.scripts.run_training_pipeline --config training/configs/training_pipeline.yaml
+
+# Windows
+venv\Scripts\python -m training.src.scripts.run_training_pipeline --config training/configs/training_pipeline.yaml
+
 ```
 
 **Outputs:**
@@ -114,8 +113,12 @@ Run the training pipeline:
 Generate bundle predictions:
 
 ```bash
-./venv/bin/python -m training.src.scripts.generate_predictions \
-  --config training/configs/generate_predictions.yaml
+# Mac / Linux
+./venv/bin/python -m training.src.scripts.generate_predictions --config training/configs/generate_predictions.yaml
+
+# Windows
+venv\Scripts\python -m training.src.scripts.generate_predictions --config training/configs/generate_predictions.yaml
+
 ```
 
 **Outputs:**
@@ -132,13 +135,12 @@ Bundles can be served via **CLI** or **YAML config**.
 ### CLI example
 
 ```bash
-python -m training.src.scripts.serve_bundle \
-  --kiosk-id 30037f531441414d92ac845f7f3e1357 \
-  --anchor-product-id 004752-001 \
-  --excluded-products 004747-001 \
-  --n-group-key 3 \
-  --n-min 4 \
-  --n-max 10
+# Mac / Linux
+python -m training.src.scripts.serve_bundle --kiosk-id 30037f531441414d92ac845f7f3e1357 --anchor-product-id 004752-001 --excluded-products 004747-001 --n-group-key 3 --n-min 4 --n-max 10
+
+# Windows
+venv\Scripts\python -m training.src.scripts.serve_bundle --kiosk-id 30037f531441414d92ac845f7f3e1357 --anchor-product-id 004752-001 --excluded-products 004747-001 --n-group-key 3 --n-min 4 --n-max 10
+
 ```
 
 ### Using `serve_bundle.yaml`
