@@ -97,7 +97,7 @@ Run the training pipeline:
 ./venv/bin/python -m training.src.scripts.run_training_pipeline --config training/configs/training_pipeline.yaml
 
 # Windows
-venv\Scripts\python -m training.src.scripts.run_training_pipeline --config training/configs/training_pipeline.yaml
+python -m training.src.scripts.run_training_pipeline --config training/configs/training_pipeline.yaml
 
 ```
 
@@ -117,7 +117,7 @@ Generate bundle predictions:
 ./venv/bin/python -m training.src.scripts.generate_predictions --config training/configs/generate_predictions.yaml
 
 # Windows
-venv\Scripts\python -m training.src.scripts.generate_predictions --config training/configs/generate_predictions.yaml
+python -m training.src.scripts.generate_predictions --config training/configs/generate_predictions.yaml
 
 ```
 
@@ -139,7 +139,7 @@ Bundles can be served via **CLI** or **YAML config**.
 python -m training.src.scripts.serve_bundle --kiosk-id 30037f531441414d92ac845f7f3e1357 --anchor-product-id 004752-001 --excluded-products 004747-001 --n-group-key 3 --n-min 4 --n-max 10
 
 # Windows
-venv\Scripts\python -m training.src.scripts.serve_bundle --kiosk-id 30037f531441414d92ac845f7f3e1357 --anchor-product-id 004752-001 --excluded-products 004747-001 --n-group-key 3 --n-min 4 --n-max 10
+python -m training.src.scripts.serve_bundle --kiosk-id 30037f531441414d92ac845f7f3e1357 --anchor-product-id 004752-001 --excluded-products 004747-001 --n-group-key 3 --n-min 4 --n-max 10
 
 ```
 
