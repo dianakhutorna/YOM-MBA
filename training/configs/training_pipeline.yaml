@@ -17,7 +17,7 @@ label_window_days: 3
 min_cooc_label: 1
 max_neg_per_group: 10
 eval_ks: [5, 10, 20, 50]
-eval_extra_neg_per_query: 10
+eval_extra_neg_per_query: 5
 features_config_path: training/configs/features.yaml
 candidate_generator: mba
 hybrid_pop_top_k_global: 50
