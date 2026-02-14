@@ -4,9 +4,6 @@ from dataclasses import dataclass
 from pathlib import Path
 import logging
 import json
-import gc
-import shutil
-
 
 import lightgbm as lgb
 import polars as pl
@@ -202,18 +199,11 @@ def run(config: TrainingPipelineConfig) -> None:
     val_queries = _build_queries(val_orders)
     test_queries = _build_queries(test_label_orders)
 
-    def _split_queries_into_chunks(df: pl.DataFrame, batch_size: int):
-        n = df.height
-        for i in range(0, n, batch_size):
-            yield df.slice(i, batch_size)
-
-    """
     feature_table_train = build_feature_table(
         baskets=baskets_train,
         topk_candidates=topk_candidates,
         queries=train_queries,
     )
-    """
     feature_table_val = build_feature_table(
         baskets=baskets_train,
         topk_candidates=topk_candidates,
@@ -239,7 +229,7 @@ def run(config: TrainingPipelineConfig) -> None:
             config=feature_config,
         )
 
-    # feature_table_train = _add_features(feature_table_train)
+    feature_table_train = _add_features(feature_table_train)
     feature_table_val = _add_features(feature_table_val)
     feature_table_test = _add_features(feature_table_test)
 
@@ -265,72 +255,16 @@ def run(config: TrainingPipelineConfig) -> None:
             ft = ft.drop(present)
         return ft
 
-    # feature_table_train = _drop_unwanted(feature_table_train)
+    feature_table_train = _drop_unwanted(feature_table_train)
     feature_table_val = _drop_unwanted(feature_table_val)
     feature_table_test = _drop_unwanted(feature_table_test)
 
-
-    #labeled_train = build_labels(
-    #    feature_table_train,
-    #    train_orders,
-    #    window_days=config.label_window_days,
-    #    min_cooc_label=config.min_cooc_label,
-    #)
-
-    # =====================================================
-    # BATCHED TRAIN BUILD (memory safe for 8GB RAM)
-    # =====================================================
-
-    LOGGER.info("Building TRAIN in batches...")
-
-    batch_size = 5000
-    tmp_dir = INTERIM_DIR / "train_batches_tmp"
-
-    if tmp_dir.exists():
-        shutil.rmtree(tmp_dir)
-    tmp_dir.mkdir(parents=True, exist_ok=True)
-
-    batch_files = []
-
-    for i, query_batch in enumerate(_split_queries_into_chunks(train_queries, batch_size)):
-        LOGGER.info(f"Processing train batch {i}")
-
-        ft = build_feature_table(
-            baskets=baskets_train,
-            topk_candidates=topk_candidates,
-            queries=query_batch,
-        )
-
-        ft = _add_features(ft)
-        ft = _drop_unwanted(ft)
-
-        labeled = build_labels(
-            ft,
-            train_orders,
-            window_days=config.label_window_days,
-            min_cooc_label=config.min_cooc_label,
-        )
-
-        labeled = labeled.with_columns(
-            pl.col("label").fill_null(0).cast(pl.Int8)
-        )
-
-        batch_path = tmp_dir / f"train_batch_{i}.parquet"
-        labeled.write_parquet(batch_path)
-        batch_files.append(str(batch_path))
-
-        del ft
-        del labeled
-        gc.collect()
-
-    LOGGER.info("All train batches written to disk.")
-
-    # Lazy load all batches
-    labeled_train = pl.scan_parquet(str(tmp_dir / "train_batch_*.parquet")).collect()
-
-    LOGGER.info("Train batches loaded into memory (single pass).")
-
-    
+    labeled_train = build_labels(
+        feature_table_train,
+        train_orders,
+        window_days=config.label_window_days,
+        min_cooc_label=config.min_cooc_label,
+    )
     labeled_val = build_labels(
         feature_table_val,
         val_orders,
@@ -579,15 +513,13 @@ def run(config: TrainingPipelineConfig) -> None:
 
     labeled_train = _filter_good_queries(labeled_train)
     labeled_val = _filter_good_queries(labeled_val)
-    # labeled_train = _sample_negatives(labeled_train, config.max_neg_per_group, seed=42)
-    # labeled_train = _shuffle_within_query(labeled_train, seed=42)
-    # labeled_val = _shuffle_within_query(labeled_val, seed=43)
+    labeled_train = _sample_negatives(labeled_train, config.max_neg_per_group, seed=42)
+    labeled_train = _shuffle_within_query(labeled_train, seed=42)
+    labeled_val = _shuffle_within_query(labeled_val, seed=43)
     _log_label_stats("TrainSampled", labeled_train)
     _log_label_stats("ValSampled", labeled_val)
 
     X_train, y_train, g_train = _to_lgbm_arrays(labeled_train)
-    del labeled_train
-    gc.collect()
     X_val, y_val, g_val = _to_lgbm_arrays(labeled_val)
     if len(g_train) == 0 or len(g_val) == 0:
         raise ValueError("Empty train/val groups; adjust split ratios or data volume.")
