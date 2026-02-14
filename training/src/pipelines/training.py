@@ -54,8 +54,10 @@ class TrainingPipelineConfig:
     min_cooc: int
     min_lift: float
     top_k: int
+    top_k_train: int | None
     label_window_days: int | None
     min_cooc_label: int
+    label_kiosk_batch_size: int
     max_neg_per_group: int
     eval_ks: list[int]
     eval_extra_neg_per_query: int
@@ -68,6 +70,7 @@ class TrainingPipelineConfig:
     item2vec_random_state: int
     hybrid_mba_kiosk_share: float
     hybrid_mba_kiosk_batch_size: int
+    predict_batch_size: int
     lgbm_params: dict
     num_boost_round: int
     early_stopping_rounds: int
@@ -94,8 +97,10 @@ class TrainingPipelineConfig:
             min_cooc=int(data.get("min_cooc", 3)),
             min_lift=float(data.get("min_lift", 2.0)),
             top_k=int(data.get("top_k", 100)),
+            top_k_train=int(data["top_k_train"]) if data.get("top_k_train") is not None else None,
             label_window_days=data.get("label_window_days", 7),
             min_cooc_label=int(data.get("min_cooc_label", 1)),
+            label_kiosk_batch_size=int(data.get("label_kiosk_batch_size", 0)),
             max_neg_per_group=int(data.get("max_neg_per_group", 60)),
             eval_ks=[int(k) for k in data.get("eval_ks", [20])],
             eval_extra_neg_per_query=int(data.get("eval_extra_neg_per_query", 0)),
@@ -108,6 +113,7 @@ class TrainingPipelineConfig:
             item2vec_random_state=int(data.get("item2vec_random_state", 42)),
             hybrid_mba_kiosk_share=float(data.get("hybrid_mba_kiosk_share", 0.5)),
             hybrid_mba_kiosk_batch_size=int(data.get("hybrid_mba_kiosk_batch_size", 100)),
+            predict_batch_size=int(data.get("predict_batch_size", 200_000)),
             lgbm_params=dict(data.get("lgbm_params", {})),
             num_boost_round=int(data.get("num_boost_round", 2000)),
             early_stopping_rounds=int(data.get("early_stopping_rounds", 100)),
@@ -187,6 +193,60 @@ def run(config: TrainingPipelineConfig) -> None:
             .unique()
         )
 
+    def _add_query_id(df: pl.DataFrame) -> pl.DataFrame:
+        return df.with_columns(
+            (pl.col("kiosk_id").cast(pl.Utf8) + pl.lit("::") + pl.col("anchor_product_id").cast(pl.Utf8))
+            .alias("query_id")
+        )
+
+    def _filter_good_queries(df: pl.DataFrame) -> pl.DataFrame:
+        df = _add_query_id(df)
+        stats = (
+            df.group_by("query_id")
+            .agg(
+                pl.len().alias("q_size"),
+                pl.sum("label").alias("q_pos"),
+            )
+        )
+        good = stats.filter((pl.col("q_size") > 1) & (pl.col("q_pos") > 0)).select("query_id")
+        out = df.join(good, on="query_id", how="inner").drop("query_id")
+        removed = stats.height - good.height
+        LOGGER.info("Queries total: %s, kept: %s, removed: %s", stats.height, good.height, removed)
+        return out
+
+    def _sample_negatives(df: pl.DataFrame, max_neg_per_group: int, seed: int = 42) -> pl.DataFrame:
+        if max_neg_per_group <= 0:
+            return df
+        df = _add_query_id(df)
+        if df.height == 0:
+            return df.drop("query_id")
+        cols_with_query = list(df.columns)
+        cols = [c for c in cols_with_query if c != "query_id"]
+        pos = df.filter(pl.col("label") == 1)
+        neg = df.filter(pl.col("label") == 0)
+        if neg.height == 0:
+            return df.drop("query_id")
+        neg = (
+            neg
+            .with_columns(pl.arange(0, pl.len()).shuffle(seed=seed).alias("_rand"))
+            .sort(["query_id", "_rand"])
+            .group_by("query_id")
+            .head(max_neg_per_group)
+            .drop("_rand")
+        )
+        combined = pl.concat(
+            [pos.select(cols_with_query), neg.select(cols_with_query)],
+            how="vertical",
+        )
+        return combined.select(cols)
+
+    def _shuffle_within_query(df: pl.DataFrame, seed: int = 42) -> pl.DataFrame:
+        if df.height == 0:
+            return df
+        df = _add_query_id(df)
+        df = df.with_columns(pl.arange(0, pl.len()).shuffle(seed=seed).alias("_rand"))
+        return df.sort(["query_id", "_rand"]).drop(["_rand", "query_id"])
+
     baskets_train = build_baskets(train_orders)
     candidate_generator = config.candidate_generator.lower().strip()
     allowed_generators = {"mba", "hybrid", "item2vec", "hybrid_mba_kiosk"}
@@ -195,61 +255,46 @@ def run(config: TrainingPipelineConfig) -> None:
             f"Unsupported candidate_generator='{candidate_generator}'. "
             f"Expected one of: {sorted(allowed_generators)}"
         )
-    if candidate_generator == "hybrid":
-        topk_candidates = generate_candidates_hybrid(
-            baskets_train,
-            products=products,
-            min_cooc=config.min_cooc,
-            min_lift=config.min_lift,
-            top_k=config.top_k,
-            pop_top_k_global=config.hybrid_pop_top_k_global,
-            pop_top_k_category=config.hybrid_pop_top_k_category,
-        )
-    elif candidate_generator == "item2vec":
-        topk_candidates = generate_candidates_item2vec(
-            baskets_train,
-            min_cooc=config.min_cooc,
-            top_k=config.top_k,
-            embedding_dim=config.item2vec_embedding_dim,
-            svd_n_iter=config.item2vec_svd_n_iter,
-            random_state=config.item2vec_random_state,
-        )
-    elif candidate_generator == "hybrid_mba_kiosk":
-        topk_candidates = generate_candidates_hybrid_mba_kiosk(
-            baskets_train,
-            min_cooc=config.min_cooc,
-            min_lift=config.min_lift,
-            top_k=config.top_k,
-            kiosk_share=config.hybrid_mba_kiosk_share,
-            kiosk_batch_size=config.hybrid_mba_kiosk_batch_size,
-        )
-    else:
+    def _generate_topk(top_k_value: int) -> pl.DataFrame:
+        if candidate_generator == "hybrid":
+            return generate_candidates_hybrid(
+                baskets_train,
+                products=products,
+                min_cooc=config.min_cooc,
+                min_lift=config.min_lift,
+                top_k=top_k_value,
+                pop_top_k_global=config.hybrid_pop_top_k_global,
+                pop_top_k_category=config.hybrid_pop_top_k_category,
+            )
+        if candidate_generator == "item2vec":
+            return generate_candidates_item2vec(
+                baskets_train,
+                min_cooc=config.min_cooc,
+                top_k=top_k_value,
+                embedding_dim=config.item2vec_embedding_dim,
+                svd_n_iter=config.item2vec_svd_n_iter,
+                random_state=config.item2vec_random_state,
+            )
+        if candidate_generator == "hybrid_mba_kiosk":
+            return generate_candidates_hybrid_mba_kiosk(
+                baskets_train,
+                min_cooc=config.min_cooc,
+                min_lift=config.min_lift,
+                top_k=top_k_value,
+                kiosk_share=config.hybrid_mba_kiosk_share,
+                kiosk_batch_size=config.hybrid_mba_kiosk_batch_size,
+            )
         candidates = generate_candidates(baskets_train, min_cooc=config.min_cooc)
-        topk_candidates = select_top_k_candidates(
+        return select_top_k_candidates(
             candidates,
-            k=config.top_k,
+            k=top_k_value,
             min_lift=config.min_lift,
         )
 
-    train_queries = _build_queries(train_orders)
-    val_queries = _build_queries(val_orders)
-    test_queries = _build_queries(test_label_orders)
-
-    feature_table_train = build_feature_table(
-        baskets=baskets_train,
-        topk_candidates=topk_candidates,
-        queries=train_queries,
-    )
-    feature_table_val = build_feature_table(
-        baskets=baskets_train,
-        topk_candidates=topk_candidates,
-        queries=val_queries,
-    )
-    feature_table_test = build_feature_table(
-        baskets=baskets_train,
-        topk_candidates=topk_candidates,
-        queries=test_queries,
-    )
+    top_k_train = int(config.top_k_train) if config.top_k_train is not None else int(config.top_k)
+    top_k_train = max(1, min(top_k_train, config.top_k))
+    topk_candidates_train = _generate_topk(top_k_train)
+    topk_candidates_eval = topk_candidates_train if top_k_train == config.top_k else _generate_topk(config.top_k)
 
     feature_config = (
         FeatureConfig.from_yaml(config.features_config_path)
@@ -265,13 +310,6 @@ def run(config: TrainingPipelineConfig) -> None:
             config=feature_config,
         )
 
-    feature_table_train = _add_features(feature_table_train)
-    feature_table_val = _add_features(feature_table_val)
-    feature_table_test = _add_features(feature_table_test)
-
-    # -----------------------------
-    # Drop unwanted features (keep only minimal set)
-    # -----------------------------
     unwanted = [
         "cand_is_new_for_kiosk", # leaking feature that indicates if candidate was ever bought in the past by the kiosk; can cause data leakage and overfitting
         "anchor_kiosk_frequency",
@@ -291,33 +329,82 @@ def run(config: TrainingPipelineConfig) -> None:
             ft = ft.drop(present)
         return ft
 
-    feature_table_train = _drop_unwanted(feature_table_train)
-    feature_table_val = _drop_unwanted(feature_table_val)
-    feature_table_test = _drop_unwanted(feature_table_test)
+    key_cols = ["kiosk_id", "anchor_product_id", "candidate_product_id"]
 
-    labeled_train = build_labels(
-        feature_table_train,
-        train_orders,
-        window_days=config.label_window_days,
-        min_cooc_label=config.min_cooc_label,
-    )
-    labeled_val = build_labels(
-        feature_table_val,
-        val_orders,
-        window_days=config.label_window_days,
-        min_cooc_label=config.min_cooc_label,
-    )
-    labeled_test = build_labels(
-        feature_table_test,
-        test_label_orders,
-        window_days=config.label_window_days,
-        min_cooc_label=config.min_cooc_label,
-    )
+    def _build_labeled_split(
+        *,
+        split_name: str,
+        query_orders: pl.DataFrame,
+        label_orders: pl.DataFrame,
+        topk_candidates: pl.DataFrame,
+        filter_good_queries: bool,
+        sample_negatives: bool,
+        shuffle_seed: int | None,
+    ) -> pl.DataFrame:
+        queries = _build_queries(query_orders)
+        base_ft = build_feature_table(
+            baskets=baskets_train,
+            topk_candidates=topk_candidates,
+            queries=queries,
+        )
+        labeled_keys = (
+            build_labels(
+                base_ft,
+                label_orders,
+                window_days=config.label_window_days,
+                min_cooc_label=config.min_cooc_label,
+                kiosk_batch_size=config.label_kiosk_batch_size,
+            )
+            .select(key_cols + ["label"])
+            .with_columns(pl.col("label").fill_null(0).cast(pl.Int8))
+        )
 
-    for col in ("label",):
-        labeled_train = labeled_train.with_columns(pl.col(col).fill_null(0).cast(pl.Int8))
-        labeled_val = labeled_val.with_columns(pl.col(col).fill_null(0).cast(pl.Int8))
-        labeled_test = labeled_test.with_columns(pl.col(col).fill_null(0).cast(pl.Int8))
+        if filter_good_queries:
+            labeled_keys = _filter_good_queries(labeled_keys)
+        if sample_negatives:
+            labeled_keys = _sample_negatives(labeled_keys, config.max_neg_per_group, seed=42)
+        if shuffle_seed is not None:
+            labeled_keys = _shuffle_within_query(labeled_keys, seed=shuffle_seed)
+        if labeled_keys.is_empty():
+            LOGGER.info("%s split is empty after early filtering/sampling.", split_name)
+            return labeled_keys
+
+        selected_keys = labeled_keys.select(key_cols).unique()
+        slim_ft = base_ft.join(selected_keys, on=key_cols, how="inner")
+        slim_ft = _drop_unwanted(_add_features(slim_ft))
+        return (
+            slim_ft
+            .join(labeled_keys, on=key_cols, how="left")
+            .with_columns(pl.col("label").fill_null(0).cast(pl.Int8))
+        )
+
+    labeled_train = _build_labeled_split(
+        split_name="Train",
+        query_orders=train_orders,
+        label_orders=train_orders,
+        topk_candidates=topk_candidates_train,
+        filter_good_queries=True,
+        sample_negatives=True,
+        shuffle_seed=42,
+    )
+    labeled_val = _build_labeled_split(
+        split_name="Val",
+        query_orders=val_orders,
+        label_orders=val_orders,
+        topk_candidates=topk_candidates_train,
+        filter_good_queries=True,
+        sample_negatives=False,
+        shuffle_seed=43,
+    )
+    labeled_test = _build_labeled_split(
+        split_name="TestLabel",
+        query_orders=test_label_orders,
+        label_orders=test_label_orders,
+        topk_candidates=topk_candidates_train,
+        filter_good_queries=False,
+        sample_negatives=False,
+        shuffle_seed=None,
+    )
 
     non_feature_cols = {"kiosk_id", "anchor_product_id", "candidate_product_id", "label"}
     numeric_dtypes = {
@@ -337,56 +424,6 @@ def run(config: TrainingPipelineConfig) -> None:
     labeled_train = _fill_missing_features(labeled_train)
     labeled_val = _fill_missing_features(labeled_val)
     labeled_test = _fill_missing_features(labeled_test)
-
-    def _add_query_id(df: pl.DataFrame) -> pl.DataFrame:
-        return df.with_columns(
-            (pl.col("kiosk_id").cast(pl.Utf8) + pl.lit("::") + pl.col("anchor_product_id").cast(pl.Utf8))
-            .alias("query_id")
-        )
-
-    def _filter_good_queries(df: pl.DataFrame) -> pl.DataFrame:
-        df = _add_query_id(df)
-        stats = (
-            df.group_by("query_id")
-            .agg(
-                pl.len().alias("q_size"),
-                pl.sum("label").alias("q_pos"),
-            )
-        )
-        good = stats.filter((pl.col("q_size") > 1) & (pl.col("q_pos") > 0)).select("query_id")
-        out = df.join(good, on="query_id", how="inner")
-        removed = stats.height - good.height
-        LOGGER.info("Queries total: %s, kept: %s, removed: %s", stats.height, good.height, removed)
-        return out
-
-    def _shuffle_within_query(df: pl.DataFrame, seed: int = 42) -> pl.DataFrame:
-        if df.height == 0:
-            return df
-        df = _add_query_id(df)
-        # Polars-native shuffle to avoid pandas memory blowups
-        df = df.with_columns(pl.arange(0, pl.len()).shuffle(seed=seed).alias("_rand"))
-        return df.sort(["query_id", "_rand"]).drop("_rand")
-
-    def _sample_negatives(df: pl.DataFrame, max_neg_per_group: int, seed: int = 42) -> pl.DataFrame:
-        if max_neg_per_group <= 0:
-            return df
-        df = _add_query_id(df)
-        if df.height == 0:
-            return df
-        cols = df.columns
-        pos = df.filter(pl.col("label") == 1)
-        neg = df.filter(pl.col("label") == 0)
-        if neg.height == 0:
-            return df
-        neg = (
-            neg
-            .with_columns(pl.arange(0, pl.len()).shuffle(seed=seed).alias("_rand"))
-            .sort(["query_id", "_rand"])
-            .group_by("query_id")
-            .head(max_neg_per_group)
-            .drop("_rand")
-        )
-        return pl.concat([pos.select(cols), neg.select(cols)], how="vertical")
 
     def _build_label_pairs(orders: pl.DataFrame, window_days: int | None) -> pl.DataFrame:
         if window_days is None:
@@ -491,14 +528,19 @@ def run(config: TrainingPipelineConfig) -> None:
         )
         if not prod_ids:
             return eval_candidates
-        pdf = eval_queries.select(["kiosk_id", "anchor_product_id"]).to_pandas()
+        q = eval_queries.select(["kiosk_id", "anchor_product_id"])
+        kiosk_vals = np.array(q["kiosk_id"].to_list(), dtype=object)
+        anchor_vals = np.array(q["anchor_product_id"].to_list(), dtype=object)
+        n_queries = len(kiosk_vals)
+        if n_queries == 0:
+            return eval_candidates
         rng = np.random.default_rng(seed)
-        idx = rng.integers(0, len(prod_ids), size=(len(pdf), extra_per_query))
-        sampled = [prod_ids[i] for i in idx.ravel()]
+        idx = rng.integers(0, len(prod_ids), size=(n_queries, extra_per_query))
+        sampled = np.array([prod_ids[i] for i in idx.ravel()], dtype=object)
         extra = pl.DataFrame(
             {
-                "kiosk_id": np.repeat(pdf["kiosk_id"].to_numpy(), extra_per_query),
-                "anchor_product_id": np.repeat(pdf["anchor_product_id"].to_numpy(), extra_per_query),
+                "kiosk_id": np.repeat(kiosk_vals, extra_per_query),
+                "anchor_product_id": np.repeat(anchor_vals, extra_per_query),
                 "candidate_product_id": sampled,
             }
         ).filter(pl.col("candidate_product_id") != pl.col("anchor_product_id"))
@@ -514,12 +556,46 @@ def run(config: TrainingPipelineConfig) -> None:
         return pl.concat([eval_candidates, extra], how="vertical")
 
     def _to_lgbm_arrays(df: pl.DataFrame):
-        pdf = _add_query_id(df).select(["query_id", "label"] + feature_cols).to_pandas()
-        pdf = pdf.sort_values("query_id", kind="mergesort")
-        group = pdf.groupby("query_id", sort=False).size().to_numpy()
-        X = pdf[feature_cols]
-        y = pdf["label"].astype(int).to_numpy()
+        sorted_df = _add_query_id(df).sort("query_id")
+        group = (
+            sorted_df
+            .group_by("query_id", maintain_order=True)
+            .agg(pl.len().alias("q_size"))
+            .select("q_size")
+            .to_series()
+            .to_numpy()
+        )
+        X = (
+            sorted_df
+            .select([pl.col(c).cast(pl.Float32) for c in feature_cols])
+            .to_numpy()
+        )
+        y = (
+            sorted_df
+            .select(pl.col("label").cast(pl.Int8))
+            .to_series()
+            .to_numpy()
+        )
         return X, y, group
+
+    def _predict_scores_batched(
+        model: lgb.Booster,
+        df: pl.DataFrame,
+        cols: list[str],
+        batch_size: int,
+    ) -> np.ndarray:
+        if df.height == 0:
+            return np.array([], dtype=np.float64)
+        batch_size = max(1, int(batch_size))
+        out: list[np.ndarray] = []
+        for start in range(0, df.height, batch_size):
+            chunk = (
+                df.slice(start, batch_size)
+                .select([pl.col(c).cast(pl.Float32) for c in cols])
+                .to_numpy()
+            )
+            out.append(np.asarray(model.predict(chunk)))
+        return np.concatenate(out) if out else np.array([], dtype=np.float64)
 
     def _log_label_stats(name: str, df: pl.DataFrame) -> None:
         if df.height == 0:
@@ -546,14 +622,6 @@ def run(config: TrainingPipelineConfig) -> None:
     _log_label_stats("Train", labeled_train)
     _log_label_stats("Val", labeled_val)
     _log_label_stats("TestLabel", labeled_test)
-
-    labeled_train = _filter_good_queries(labeled_train)
-    labeled_val = _filter_good_queries(labeled_val)
-    labeled_train = _sample_negatives(labeled_train, config.max_neg_per_group, seed=42)
-    labeled_train = _shuffle_within_query(labeled_train, seed=42)
-    labeled_val = _shuffle_within_query(labeled_val, seed=43)
-    _log_label_stats("TrainSampled", labeled_train)
-    _log_label_stats("ValSampled", labeled_val)
 
     X_train, y_train, g_train = _to_lgbm_arrays(labeled_train)
     X_val, y_val, g_val = _to_lgbm_arrays(labeled_val)
@@ -645,7 +713,7 @@ def run(config: TrainingPipelineConfig) -> None:
     )
     eval_feature_table = build_feature_table(
         baskets=baskets_train,
-        topk_candidates=topk_candidates,
+        topk_candidates=topk_candidates_eval,
         queries=eval_queries,
     )
     _log_candidate_recall(
@@ -668,6 +736,7 @@ def run(config: TrainingPipelineConfig) -> None:
         test_label_orders,
         window_days=config.label_window_days,
         min_cooc_label=config.min_cooc_label,
+        kiosk_batch_size=config.label_kiosk_batch_size,
     )
     for c in feature_cols:
         if c not in eval_labeled.columns:
@@ -676,9 +745,13 @@ def run(config: TrainingPipelineConfig) -> None:
         [pl.col(c).fill_null(0) for c in feature_cols] +
         [pl.col("label").fill_null(0).cast(pl.Int8)]
     )
-    eval_pdf = eval_labeled.select(["kiosk_id", "anchor_product_id", "candidate_product_id", "label"] + feature_cols).to_pandas()
-    eval_pdf["score"] = booster.predict(eval_pdf[feature_cols])
-    eval_scored = pl.from_pandas(eval_pdf)
+    eval_scores = _predict_scores_batched(
+        booster,
+        eval_labeled,
+        feature_cols,
+        batch_size=config.predict_batch_size,
+    )
+    eval_scored = eval_labeled.with_columns(pl.Series("score", eval_scores))
     eval_scored = _shuffle_within_query(eval_scored, seed=99)
 
     _log_label_stats("TestEval", eval_labeled)

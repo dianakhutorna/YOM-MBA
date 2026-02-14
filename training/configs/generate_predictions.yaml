@@ -25,5 +25,6 @@ item2vec_svd_n_iter: 10
 item2vec_random_state: 42
 hybrid_mba_kiosk_share: 0.5
 hybrid_mba_kiosk_batch_size: 100
+predict_batch_size: 200000
 normalize_popularity: true
 query_sample_n: 100000

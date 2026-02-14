@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 
 import lightgbm as lgb
+import numpy as np
 import polars as pl
 
 from training.src.config import FeatureConfig, load_yaml_config
@@ -72,6 +73,7 @@ def main() -> None:
     item2vec_random_state = int(cfg.get("item2vec_random_state", 42))
     hybrid_mba_kiosk_share = float(cfg.get("hybrid_mba_kiosk_share", 0.5))
     hybrid_mba_kiosk_batch_size = int(cfg.get("hybrid_mba_kiosk_batch_size", 100))
+    predict_batch_size = int(cfg.get("predict_batch_size", 200_000))
     normalize_popularity = bool(cfg.get("normalize_popularity", True))
 
     orders = load_orders_parquet(orders_path)
@@ -201,7 +203,21 @@ def main() -> None:
             zero_only[:10],
         )
 
-    scores = ranker.predict(feature_table.select(model_feature_cols).to_pandas())
+    def _predict_scores_batched(df: pl.DataFrame, cols: list[str], batch_size: int) -> np.ndarray:
+        if df.height == 0:
+            return np.array([], dtype=np.float64)
+        batch_size = max(1, int(batch_size))
+        out: list[np.ndarray] = []
+        for start in range(0, df.height, batch_size):
+            chunk = (
+                df.slice(start, batch_size)
+                .select([pl.col(c).cast(pl.Float32) for c in cols])
+                .to_numpy()
+            )
+            out.append(np.asarray(ranker.predict(chunk)))
+        return np.concatenate(out) if out else np.array([], dtype=np.float64)
+
+    scores = _predict_scores_batched(feature_table, model_feature_cols, predict_batch_size)
     scored = feature_table.with_columns(pl.Series("score", scores))
     prod_map = products.select(
         [
