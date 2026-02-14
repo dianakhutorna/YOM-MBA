@@ -17,6 +17,7 @@ from training.src.steps.build_baskets import build_baskets
 from training.src.steps.build_feature_table import build_feature_table
 from training.src.steps.generate_candidates import generate_candidates
 from training.src.steps.generate_candidates_hybrid import generate_candidates_hybrid
+from training.src.steps.generate_candidates_hybrid_mba_kiosk import generate_candidates_hybrid_mba_kiosk
 from training.src.steps.generate_candidates_item2vec import generate_candidates_item2vec
 from training.src.steps.select_top_k_candidates import select_top_k_candidates
 from training.src.steps.split_orders import split_orders_by_time
@@ -69,6 +70,8 @@ def main() -> None:
     item2vec_embedding_dim = int(cfg.get("item2vec_embedding_dim", 64))
     item2vec_svd_n_iter = int(cfg.get("item2vec_svd_n_iter", 10))
     item2vec_random_state = int(cfg.get("item2vec_random_state", 42))
+    hybrid_mba_kiosk_share = float(cfg.get("hybrid_mba_kiosk_share", 0.5))
+    hybrid_mba_kiosk_batch_size = int(cfg.get("hybrid_mba_kiosk_batch_size", 100))
     normalize_popularity = bool(cfg.get("normalize_popularity", True))
 
     orders = load_orders_parquet(orders_path)
@@ -105,7 +108,7 @@ def main() -> None:
             candidate_generator,
         )
         candidate_generator = "hybrid"
-    allowed_generators = {"mba", "hybrid", "item2vec"}
+    allowed_generators = {"mba", "hybrid", "item2vec", "hybrid_mba_kiosk"}
     if candidate_generator not in allowed_generators:
         raise ValueError(
             f"Unsupported candidate_generator='{candidate_generator}'. "
@@ -129,6 +132,15 @@ def main() -> None:
             embedding_dim=item2vec_embedding_dim,
             svd_n_iter=item2vec_svd_n_iter,
             random_state=item2vec_random_state,
+        )
+    elif candidate_generator == "hybrid_mba_kiosk":
+        topk_candidates = generate_candidates_hybrid_mba_kiosk(
+            baskets_train,
+            min_cooc=min_cooc,
+            min_lift=min_lift,
+            top_k=top_k_candidates,
+            kiosk_share=hybrid_mba_kiosk_share,
+            kiosk_batch_size=hybrid_mba_kiosk_batch_size,
         )
     else:
         candidates = generate_candidates(baskets_train, min_cooc=min_cooc)

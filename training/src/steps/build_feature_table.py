@@ -95,9 +95,14 @@ def build_feature_table(
     # --------------------------------------
     # 2. Join with top-K candidates (GLOBAL)
     # --------------------------------------
+    join_keys = (
+        ["kiosk_id", "anchor_product_id"]
+        if "kiosk_id" in topk_candidates.columns
+        else ["anchor_product_id"]
+    )
     feature_table = kiosk_anchors.join(
         topk_candidates,
-        on="anchor_product_id",
+        on=join_keys,
         how="inner",
     )
 

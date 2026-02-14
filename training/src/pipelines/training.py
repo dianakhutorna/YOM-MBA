@@ -20,6 +20,7 @@ from training.src.steps.build_feature_table import build_feature_table
 from training.src.steps.build_labels import build_labels
 from training.src.steps.generate_candidates import generate_candidates
 from training.src.steps.generate_candidates_hybrid import generate_candidates_hybrid
+from training.src.steps.generate_candidates_hybrid_mba_kiosk import generate_candidates_hybrid_mba_kiosk
 from training.src.steps.generate_candidates_item2vec import generate_candidates_item2vec
 from training.src.steps.preprocessing import preprocess_orders
 from training.src.steps.select_top_k_candidates import select_top_k_candidates
@@ -65,6 +66,8 @@ class TrainingPipelineConfig:
     item2vec_embedding_dim: int
     item2vec_svd_n_iter: int
     item2vec_random_state: int
+    hybrid_mba_kiosk_share: float
+    hybrid_mba_kiosk_batch_size: int
     lgbm_params: dict
     num_boost_round: int
     early_stopping_rounds: int
@@ -103,6 +106,8 @@ class TrainingPipelineConfig:
             item2vec_embedding_dim=int(data.get("item2vec_embedding_dim", 64)),
             item2vec_svd_n_iter=int(data.get("item2vec_svd_n_iter", 10)),
             item2vec_random_state=int(data.get("item2vec_random_state", 42)),
+            hybrid_mba_kiosk_share=float(data.get("hybrid_mba_kiosk_share", 0.5)),
+            hybrid_mba_kiosk_batch_size=int(data.get("hybrid_mba_kiosk_batch_size", 100)),
             lgbm_params=dict(data.get("lgbm_params", {})),
             num_boost_round=int(data.get("num_boost_round", 2000)),
             early_stopping_rounds=int(data.get("early_stopping_rounds", 100)),
@@ -184,7 +189,7 @@ def run(config: TrainingPipelineConfig) -> None:
 
     baskets_train = build_baskets(train_orders)
     candidate_generator = config.candidate_generator.lower().strip()
-    allowed_generators = {"mba", "hybrid", "item2vec"}
+    allowed_generators = {"mba", "hybrid", "item2vec", "hybrid_mba_kiosk"}
     if candidate_generator not in allowed_generators:
         raise ValueError(
             f"Unsupported candidate_generator='{candidate_generator}'. "
@@ -208,6 +213,15 @@ def run(config: TrainingPipelineConfig) -> None:
             embedding_dim=config.item2vec_embedding_dim,
             svd_n_iter=config.item2vec_svd_n_iter,
             random_state=config.item2vec_random_state,
+        )
+    elif candidate_generator == "hybrid_mba_kiosk":
+        topk_candidates = generate_candidates_hybrid_mba_kiosk(
+            baskets_train,
+            min_cooc=config.min_cooc,
+            min_lift=config.min_lift,
+            top_k=config.top_k,
+            kiosk_share=config.hybrid_mba_kiosk_share,
+            kiosk_batch_size=config.hybrid_mba_kiosk_batch_size,
         )
     else:
         candidates = generate_candidates(baskets_train, min_cooc=config.min_cooc)

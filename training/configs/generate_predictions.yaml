@@ -17,11 +17,13 @@ min_cooc: 3
 min_lift: 2.0
 top_k_candidates: 100
 catalog_top_k: 100
-candidate_generator: mba  # mba | hybrid | item2vec
+candidate_generator: mba  # mba | hybrid | item2vec | hybrid_mba_kiosk
 hybrid_pop_top_k_global: 50
 hybrid_pop_top_k_category: 50
 item2vec_embedding_dim: 64
 item2vec_svd_n_iter: 10
 item2vec_random_state: 42
+hybrid_mba_kiosk_share: 0.5
+hybrid_mba_kiosk_batch_size: 100
 normalize_popularity: true
 query_sample_n: 100000
