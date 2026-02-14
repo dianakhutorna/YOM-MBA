@@ -20,6 +20,7 @@ from training.src.steps.build_feature_table import build_feature_table
 from training.src.steps.build_labels import build_labels
 from training.src.steps.generate_candidates import generate_candidates
 from training.src.steps.generate_candidates_hybrid import generate_candidates_hybrid
+from training.src.steps.generate_candidates_item2vec import generate_candidates_item2vec
 from training.src.steps.preprocessing import preprocess_orders
 from training.src.steps.select_top_k_candidates import select_top_k_candidates
 from training.src.steps.split_orders import split_orders_by_time
@@ -61,6 +62,9 @@ class TrainingPipelineConfig:
     candidate_generator: str
     hybrid_pop_top_k_global: int
     hybrid_pop_top_k_category: int
+    item2vec_embedding_dim: int
+    item2vec_svd_n_iter: int
+    item2vec_random_state: int
     lgbm_params: dict
     num_boost_round: int
     early_stopping_rounds: int
@@ -96,6 +100,9 @@ class TrainingPipelineConfig:
             candidate_generator=str(data.get("candidate_generator", "mba")),
             hybrid_pop_top_k_global=int(data.get("hybrid_pop_top_k_global", 50)),
             hybrid_pop_top_k_category=int(data.get("hybrid_pop_top_k_category", 50)),
+            item2vec_embedding_dim=int(data.get("item2vec_embedding_dim", 64)),
+            item2vec_svd_n_iter=int(data.get("item2vec_svd_n_iter", 10)),
+            item2vec_random_state=int(data.get("item2vec_random_state", 42)),
             lgbm_params=dict(data.get("lgbm_params", {})),
             num_boost_round=int(data.get("num_boost_round", 2000)),
             early_stopping_rounds=int(data.get("early_stopping_rounds", 100)),
@@ -177,6 +184,12 @@ def run(config: TrainingPipelineConfig) -> None:
 
     baskets_train = build_baskets(train_orders)
     candidate_generator = config.candidate_generator.lower().strip()
+    allowed_generators = {"mba", "hybrid", "item2vec"}
+    if candidate_generator not in allowed_generators:
+        raise ValueError(
+            f"Unsupported candidate_generator='{candidate_generator}'. "
+            f"Expected one of: {sorted(allowed_generators)}"
+        )
     if candidate_generator == "hybrid":
         topk_candidates = generate_candidates_hybrid(
             baskets_train,
@@ -186,6 +199,15 @@ def run(config: TrainingPipelineConfig) -> None:
             top_k=config.top_k,
             pop_top_k_global=config.hybrid_pop_top_k_global,
             pop_top_k_category=config.hybrid_pop_top_k_category,
+        )
+    elif candidate_generator == "item2vec":
+        topk_candidates = generate_candidates_item2vec(
+            baskets_train,
+            min_cooc=config.min_cooc,
+            top_k=config.top_k,
+            embedding_dim=config.item2vec_embedding_dim,
+            svd_n_iter=config.item2vec_svd_n_iter,
+            random_state=config.item2vec_random_state,
         )
     else:
         candidates = generate_candidates(baskets_train, min_cooc=config.min_cooc)

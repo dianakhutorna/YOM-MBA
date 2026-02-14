@@ -17,6 +17,7 @@ from training.src.steps.build_baskets import build_baskets
 from training.src.steps.build_feature_table import build_feature_table
 from training.src.steps.generate_candidates import generate_candidates
 from training.src.steps.generate_candidates_hybrid import generate_candidates_hybrid
+from training.src.steps.generate_candidates_item2vec import generate_candidates_item2vec
 from training.src.steps.select_top_k_candidates import select_top_k_candidates
 from training.src.steps.split_orders import split_orders_by_time
 
@@ -65,6 +66,9 @@ def main() -> None:
     candidate_generator = str(cfg.get("candidate_generator", "mba")).lower().strip()
     hybrid_pop_top_k_global = int(cfg.get("hybrid_pop_top_k_global", 50))
     hybrid_pop_top_k_category = int(cfg.get("hybrid_pop_top_k_category", 50))
+    item2vec_embedding_dim = int(cfg.get("item2vec_embedding_dim", 64))
+    item2vec_svd_n_iter = int(cfg.get("item2vec_svd_n_iter", 10))
+    item2vec_random_state = int(cfg.get("item2vec_random_state", 42))
     normalize_popularity = bool(cfg.get("normalize_popularity", True))
 
     orders = load_orders_parquet(orders_path)
@@ -101,6 +105,12 @@ def main() -> None:
             candidate_generator,
         )
         candidate_generator = "hybrid"
+    allowed_generators = {"mba", "hybrid", "item2vec"}
+    if candidate_generator not in allowed_generators:
+        raise ValueError(
+            f"Unsupported candidate_generator='{candidate_generator}'. "
+            f"Expected one of: {sorted(allowed_generators)}"
+        )
     if candidate_generator == "hybrid":
         topk_candidates = generate_candidates_hybrid(
             baskets_train,
@@ -110,6 +120,15 @@ def main() -> None:
             top_k=top_k_candidates,
             pop_top_k_global=hybrid_pop_top_k_global,
             pop_top_k_category=hybrid_pop_top_k_category,
+        )
+    elif candidate_generator == "item2vec":
+        topk_candidates = generate_candidates_item2vec(
+            baskets_train,
+            min_cooc=min_cooc,
+            top_k=top_k_candidates,
+            embedding_dim=item2vec_embedding_dim,
+            svd_n_iter=item2vec_svd_n_iter,
+            random_state=item2vec_random_state,
         )
     else:
         candidates = generate_candidates(baskets_train, min_cooc=min_cooc)

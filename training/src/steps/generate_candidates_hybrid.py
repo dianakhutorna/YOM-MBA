@@ -82,7 +82,7 @@ def generate_candidates_hybrid(
                 "support": pl.Float64,
                 "confidence": pl.Float64,
                 "lift": pl.Float64,
-                "cosine_sim": pl.Float64,
+                "cooc_cosine_sim": pl.Float64,
             }
         )
 
@@ -167,7 +167,7 @@ def generate_candidates_hybrid(
                     pl.lit(0.0).cast(pl.Float64).alias("support"),
                     pl.lit(0.0).cast(pl.Float64).alias("confidence"),
                     pl.lit(0.0).cast(pl.Float64).alias("lift"),
-                    pl.lit(0.0).cast(pl.Float64).alias("cosine_sim"),
+                    pl.lit(0.0).cast(pl.Float64).alias("cooc_cosine_sim"),
                 ]
             )
             .select(
@@ -180,7 +180,7 @@ def generate_candidates_hybrid(
                     "support",
                     "confidence",
                     "lift",
-                    "cosine_sim",
+                    "cooc_cosine_sim",
                     "pop_score",
                     "source",
                 ]
@@ -195,7 +195,7 @@ def generate_candidates_hybrid(
             pl.col("support").cast(pl.Float64),
             pl.col("confidence").cast(pl.Float64),
             pl.col("lift").cast(pl.Float64),
-            pl.col("cosine_sim").cast(pl.Float64),
+            pl.col("cooc_cosine_sim").cast(pl.Float64),
             pl.lit(None).cast(pl.Float64).alias("pop_score"),
             pl.lit("mba").alias("source"),
         ]

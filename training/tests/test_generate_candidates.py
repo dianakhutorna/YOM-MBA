@@ -11,7 +11,7 @@ def test_generate_candidates_columns(candidates_df):
         "support",
         "confidence",
         "lift",
-        "cosine_sim",
+        "cooc_cosine_sim",
     }
     assert expected.issubset(set(candidates_df.columns))
 

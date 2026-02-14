@@ -59,7 +59,7 @@ def generate_candidates(
 ) -> pl.DataFrame:
     """
     Generate anchor-candidate pairs from baskets and compute
-    co-occurrence-based metrics + cosine similarity.
+    co-occurrence-based metrics + co-occurrence cosine similarity.
 
     baskets columns:
     - kiosk_id
@@ -79,7 +79,7 @@ def generate_candidates(
                 "support": pl.Float64,
                 "confidence": pl.Float64,
                 "lift": pl.Float64,
-                "cosine_sim": pl.Float64,
+                "cooc_cosine_sim": pl.Float64,
             }
         )
 
@@ -136,7 +136,7 @@ def generate_candidates(
     )
 
     # ------------------------------------------------------------------
-    # 6. MBA metrics + cosine similarity
+    # 6. MBA metrics + cosine over basket-incidence vectors
     # ------------------------------------------------------------------
     cooc = cooc.with_columns([
         (pl.col("cooc_count") / total_baskets).alias("support"),
@@ -156,9 +156,8 @@ def generate_candidates(
             (pl.col("anchor_count") * pl.col("candidate_count")).sqrt()
         )
         .otherwise(0.0)
-        .alias("cosine_sim"),
+        .alias("cooc_cosine_sim"),
     ])
 
     return cooc
-
 

@@ -19,9 +19,12 @@ max_neg_per_group: 0
 eval_ks: [5, 10, 20, 50]
 eval_extra_neg_per_query: 5
 features_config_path: training/configs/features.yaml
-candidate_generator: mba
+candidate_generator: item2vec  # mba | hybrid | item2vec
 hybrid_pop_top_k_global: 50
 hybrid_pop_top_k_category: 50
+item2vec_embedding_dim: 64
+item2vec_svd_n_iter: 10
+item2vec_random_state: 42
 lgbm_params:
   learning_rate: 0.03
   num_leaves: 31
