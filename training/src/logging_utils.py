@@ -7,7 +7,9 @@ import logging
 
 def setup_logging(run_name: str, logs_dir: Path | str = "logs") -> Path:
     """
-    Configure logging to both console and a timestamped file.
+    Configure logging:
+      - Console: INFO (readable)
+      - File:    DEBUG (full details)
     Returns the log file path.
     """
     logs_path = Path(logs_dir)
@@ -17,14 +19,20 @@ def setup_logging(run_name: str, logs_dir: Path | str = "logs") -> Path:
     log_file = logs_path / f"{run_name}_{ts}.log"
 
     root = logging.getLogger()
-    root.setLevel(logging.INFO)
+    root.setLevel(logging.DEBUG)
+
+    # Clear previous handlers
     for h in list(root.handlers):
         root.removeHandler(h)
 
-    fmt = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
+    fmt = logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+
     stream = logging.StreamHandler()
+    stream.setLevel(logging.INFO)
     stream.setFormatter(fmt)
+
     file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(fmt)
 
     root.addHandler(stream)

@@ -26,8 +26,7 @@ REQUIRED_QUERY_COLS: tuple[str, ...] = (
 def _ensure_columns(df: pl.DataFrame, cols: Sequence[str]) -> None:
     missing = [c for c in cols if c not in df.columns]
     if missing:
-        missing_str = ", ".join(missing)
-        raise ValueError(f"Missing required columns: {missing_str}")
+        raise ValueError(f"Missing required columns: {', '.join(missing)}")
 
 
 def build_feature_table(
@@ -37,49 +36,19 @@ def build_feature_table(
 ) -> pl.DataFrame:
     """
     Build feature table for (kiosk, anchor, candidate).
-
-    Parameters
-    ----------
-    baskets : pl.DataFrame
-        Train baskets (used only to define default kiosk-anchor pairs).
-        Schema: [kiosk_id, order_id, products]
-
-    topk_candidates : pl.DataFrame
-        Output of select_top_k_candidates().
-        Must contain: [anchor_product_id, candidate_product_id, cooc_count, confidence, lift, ...]
-
-    queries : pl.DataFrame | None
-        Optional explicit set of (kiosk_id, anchor_product_id) queries.
-        If provided, MUST have columns:
-            - kiosk_id
-            - anchor_product_id
-
-        If None, kiosk-anchor pairs are derived from baskets (BACKWARD COMPATIBLE).
-
-    Returns
-    -------
-    pl.DataFrame
-        Feature table with one row per (kiosk, anchor, candidate).
     """
-
     _ensure_columns(topk_candidates, REQUIRED_TOPK_COLS)
     if queries is None:
         _ensure_columns(baskets, REQUIRED_BASKET_COLS)
     else:
         _ensure_columns(queries, REQUIRED_QUERY_COLS)
 
-    LOGGER.info("Building feature table")
+    LOGGER.info("Build feature table: start")
 
-    # --------------------------------------
-    # 1. Define (kiosk, anchor_product) pairs
-    # --------------------------------------
+    # 1) Define (kiosk, anchor) queries
     if queries is not None:
-        kiosk_anchors = (
-            queries
-            .select(["kiosk_id", "anchor_product_id"])
-            .unique()
-        )
-        LOGGER.info("Using explicit queries")
+        kiosk_anchors = queries.select(["kiosk_id", "anchor_product_id"]).unique()
+        LOGGER.info("Build feature table: using explicit queries (rows=%s)", kiosk_anchors.height)
     else:
         kiosk_anchors = (
             baskets
@@ -88,24 +57,17 @@ def build_feature_table(
             .rename({"products": "anchor_product_id"})
             .unique()
         )
-        LOGGER.info("Using kiosk-anchor pairs from baskets")
+        LOGGER.info("Build feature table: using kiosk-anchor pairs from baskets (rows=%s)", kiosk_anchors.height)
 
-    LOGGER.info("Kiosk-anchor pairs: %s", kiosk_anchors.shape)
+    # 2) Join with candidates
+    join_keys = ["kiosk_id", "anchor_product_id"] if "kiosk_id" in topk_candidates.columns else ["anchor_product_id"]
+    LOGGER.info("Build feature table: join keys=%s", join_keys)
 
-    # --------------------------------------
-    # 2. Join with top-K candidates (GLOBAL)
-    # --------------------------------------
-    join_keys = (
-        ["kiosk_id", "anchor_product_id"]
-        if "kiosk_id" in topk_candidates.columns
-        else ["anchor_product_id"]
+    feature_table = kiosk_anchors.join(topk_candidates, on=join_keys, how="inner")
+
+    LOGGER.info(
+        "Build feature table: done (rows=%s cols=%s)",
+        feature_table.height,
+        feature_table.width,
     )
-    feature_table = kiosk_anchors.join(
-        topk_candidates,
-        on=join_keys,
-        how="inner",
-    )
-
-    LOGGER.info("Feature table shape: %s", feature_table.shape)
-
     return feature_table

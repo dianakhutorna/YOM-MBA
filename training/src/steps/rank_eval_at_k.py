@@ -135,49 +135,6 @@ def positives_at_k_by_score(
 
     return float(mean_val)
 
-def precision_at_k_by_score(
-    df: pl.DataFrame,
-    k: int = 20,
-    score_col: str = "score",
-) -> float:
-    """
-    Precision@K = (# relevant items in top-K) / K
-    averaged over (kiosk_id, anchor_product_id) groups
-    that have at least one positive label.
-    """
-
-    valid_groups = (
-        df.filter(pl.col("label") == 1)
-        .select(["kiosk_id", "anchor_product_id"])
-        .unique()
-    )
-
-    df = df.join(
-        valid_groups,
-        on=["kiosk_id", "anchor_product_id"],
-        how="inner",
-    )
-
-    topk = (
-        df.sort(
-            ["kiosk_id", "anchor_product_id", score_col],
-            descending=[False, False, True],
-        )
-        .group_by(["kiosk_id", "anchor_product_id"])
-        .head(k)
-    )
-
-    per_group = (
-        topk.group_by(["kiosk_id", "anchor_product_id"])
-        .agg(pl.sum("label").alias("hits"))
-        .with_columns((pl.col("hits") / k).alias("precision"))
-    )
-
-    mean_val = per_group.select(pl.mean("precision")).item()
-    if mean_val is None:
-        return 0.0
-    return float(mean_val)
-
 def quantity_captured_at_k_by_score(
     df: pl.DataFrame,
     test_orders: pl.DataFrame,

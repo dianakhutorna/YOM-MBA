@@ -29,77 +29,23 @@ def _ensure_columns(df: pl.DataFrame, cols: Sequence[str]) -> None:
 def add_behavioral_features(
     feature_table: pl.DataFrame,
     train_orders: pl.DataFrame,
-    *,
-    kiosk_col: str = "kiosk_id",
-    product_col: str = "product_id",
 ) -> pl.DataFrame:
-    """
-    Add kiosk-specific behavioral features:
 
-    - pop_store:
-        how many times kiosk bought candidate
-    - kiosk_bought_candidate_before:
-        binary flag (0/1)
-    - anchor_kiosk_frequency:
-        how many times kiosk bought anchor
-    """
-
-    _ensure_columns(feature_table, REQUIRED_FEATURE_COLS)
-    _ensure_columns(train_orders, REQUIRED_ORDER_COLS)
-
-    LOGGER.info("Adding behavioral (kiosk-specific) features")
-
-    # ----------------------------------
-    # Long orders: kiosk × product
-    # ----------------------------------
-    orders_long = (
-        train_orders
-        .select([kiosk_col, product_col])
-    )
-
-    # ----------------------------------
-    # kiosk × product counts (single aggregation)
-    # ----------------------------------
     kiosk_product_counts = (
-        orders_long
-        .group_by([kiosk_col, product_col])
+        train_orders
+        .group_by(["kiosk_id", "product_id"])
         .len()
-        .rename({"len": "kiosk_product_count"})
+        .rename({"len": "pop_store"})
     )
 
-    # pop_store for candidate
     ft = feature_table.join(
-        kiosk_product_counts.rename({"kiosk_product_count": "pop_store"}),
-        left_on=[kiosk_col, "candidate_product_id"],
-        right_on=[kiosk_col, product_col],
+        kiosk_product_counts,
+        left_on=["kiosk_id", "candidate_product_id"],
+        right_on=["kiosk_id", "product_id"],
         how="left",
     )
 
-    # kiosk_bought_candidate_before (binary)
-    ft = ft.with_columns(
-        (pl.col("pop_store") > 0)
-        .cast(pl.Int8)
-        .alias("kiosk_bought_candidate_before")
+    return ft.with_columns(
+        pl.col("pop_store").fill_null(0)
     )
 
-    # anchor_kiosk_frequency (reuse same counts)
-    ft = ft.join(
-        kiosk_product_counts.rename({"kiosk_product_count": "anchor_kiosk_frequency"}),
-        left_on=[kiosk_col, "anchor_product_id"],
-        right_on=[kiosk_col, product_col],
-        how="left",
-    )
-
-    # ----------------------------------
-    # Fill missing with 0
-    # ----------------------------------
-    ft = ft.with_columns(
-        [
-            pl.col("pop_store").fill_null(0),
-            pl.col("anchor_kiosk_frequency").fill_null(0),
-        ]
-    )
-
-    LOGGER.info("Behavioral features added")
-
-    return ft

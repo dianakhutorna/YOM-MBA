@@ -17,7 +17,9 @@ from training.src.logging_utils import setup_logging
 from training.src.paths import RAW_DIR, INTERIM_DIR, EXTERNAL_DIR, MODELS_DIR
 from training.src.steps.build_baskets import build_baskets
 from training.src.steps.build_feature_table import build_feature_table
-from training.src.steps.build_labels import build_labels
+# from training.src.steps.build_labels import build_labels
+from training.src.steps.build_labels import build_labels, build_label_pairs
+
 from training.src.steps.generate_candidates import generate_candidates
 from training.src.steps.generate_candidates_hybrid import generate_candidates_hybrid
 from training.src.steps.generate_candidates_hybrid_mba_kiosk import generate_candidates_hybrid_mba_kiosk
@@ -124,6 +126,14 @@ class TrainingPipelineConfig:
 def run(config: TrainingPipelineConfig) -> None:
     setup_logging("training")
 
+    def _banner(title: str) -> None:
+        line = "=" * 64
+        LOGGER.info(line)
+        LOGGER.info(title)
+        LOGGER.info(line)
+
+    _banner("STEP 1 — LOAD DATA")
+
     per_file = max(1, config.n_rows // len(config.raw_paths))
     LOGGER.info(
         "Loading raw paths: %s (per_file=%s, sample_position=%s)",
@@ -144,10 +154,12 @@ def run(config: TrainingPipelineConfig) -> None:
         LOGGER.info("Raw orders date range: %s to %s", dt_stats[0], dt_stats[1])
     clean_orders = preprocess_orders(raw_orders)
     save_parquet(clean_orders, config.interim_path)
-    LOGGER.info("Saved interim orders to %s", config.interim_path)
+    # LOGGER.info("Saved interim orders to %s", config.interim_path)
 
     products = load_products_csv(config.products_path)
     commerces = load_commerces_csv(config.commerces_path)
+
+    _banner("STEP 2 — SPLIT DATA")
 
     train_orders, val_orders, test_holdout_orders = split_orders_by_time(
         clean_orders,
@@ -247,7 +259,12 @@ def run(config: TrainingPipelineConfig) -> None:
         df = df.with_columns(pl.arange(0, pl.len()).shuffle(seed=seed).alias("_rand"))
         return df.sort(["query_id", "_rand"]).drop(["_rand", "query_id"])
 
+    _banner("STEP 3 — BUILD BASKETS")
+
     baskets_train = build_baskets(train_orders)
+
+    _banner("STEP 4 — GENERATE CANDIDATES")
+
     candidate_generator = config.candidate_generator.lower().strip()
     allowed_generators = {"mba", "hybrid", "item2vec", "hybrid_mba_kiosk"}
     if candidate_generator not in allowed_generators:
@@ -341,43 +358,96 @@ def run(config: TrainingPipelineConfig) -> None:
         sample_negatives: bool,
         shuffle_seed: int | None,
     ) -> pl.DataFrame:
-        queries = _build_queries(query_orders)
+        LOGGER.info("---- Split %s: start ----", split_name)
+
+        # 1) Queries from query_orders (kiosk, anchor)
+        queries_all = _build_queries(query_orders)
+
+        # 2) Compute POSITIVE pairs from label_orders first (heavy but batched)
+        #    This gives us ground-truth positives, independent of candidates.
+        pos_pairs = build_label_pairs(
+            label_orders,
+            window_days=config.label_window_days,
+            min_cooc_label=config.min_cooc_label,
+            dt_col="order_dt",
+            kiosk_batch_size=config.label_kiosk_batch_size,
+        ).select(["kiosk_id", "anchor_product_id", "candidate_product_id"])
+
+        # 3) Keep only queries that actually have at least one positive in the label window
+        #    (this is the big win: we don’t build candidate tables for dead queries)
+        pos_queries = pos_pairs.select(["kiosk_id", "anchor_product_id"]).unique()
+
+        queries = queries_all.join(pos_queries, on=["kiosk_id", "anchor_product_id"], how="inner")
+        LOGGER.info(
+            "Split %s: queries total=%s -> with positives=%s (filtered=%s)",
+            split_name,
+            queries_all.height,
+            queries.height,
+            queries_all.height - queries.height,
+        )
+        if queries.is_empty():
+            LOGGER.info("Split %s: empty after positive-query filtering.", split_name)
+            return pl.DataFrame(schema={**{c: pl.Utf8 for c in key_cols}, "label": pl.Int8})
+
+        # 4) Build candidate feature table ONLY for remaining queries
         base_ft = build_feature_table(
             baskets=baskets_train,
             topk_candidates=topk_candidates,
             queries=queries,
         )
+
+        # 5) Label only those candidate rows by joining to positives
         labeled_keys = (
-            build_labels(
-                base_ft,
-                label_orders,
-                window_days=config.label_window_days,
-                min_cooc_label=config.min_cooc_label,
-                kiosk_batch_size=config.label_kiosk_batch_size,
+            base_ft
+            .select(key_cols)
+            .join(
+                pos_pairs.with_columns(pl.lit(1).cast(pl.Int8).alias("label")),
+                on=key_cols,
+                how="left",
             )
-            .select(key_cols + ["label"])
             .with_columns(pl.col("label").fill_null(0).cast(pl.Int8))
         )
 
+        # 6) Optional query-quality filter (now it’s cheap because we already removed dead queries)
         if filter_good_queries:
             labeled_keys = _filter_good_queries(labeled_keys)
+
+        # 7) Negative sampling (works on labeled keys, so it’s much smaller than before)
         if sample_negatives:
             labeled_keys = _sample_negatives(labeled_keys, config.max_neg_per_group, seed=42)
+
+        # 8) Shuffle within query
         if shuffle_seed is not None:
             labeled_keys = _shuffle_within_query(labeled_keys, seed=shuffle_seed)
+
         if labeled_keys.is_empty():
-            LOGGER.info("%s split is empty after early filtering/sampling.", split_name)
+            LOGGER.info("Split %s: empty after sampling/shuffling.", split_name)
             return labeled_keys
 
+        # 9) Now build features only for selected rows (NOT for all base_ft rows)
         selected_keys = labeled_keys.select(key_cols).unique()
         slim_ft = base_ft.join(selected_keys, on=key_cols, how="inner")
+
         slim_ft = _drop_unwanted(_add_features(slim_ft))
-        return (
+
+        out = (
             slim_ft
             .join(labeled_keys, on=key_cols, how="left")
             .with_columns(pl.col("label").fill_null(0).cast(pl.Int8))
         )
 
+        LOGGER.info(
+            "Split %s: done (rows=%s positives=%s ratio=%.4f queries=%s)",
+            split_name,
+            out.height,
+            int(out.select(pl.col("label").sum()).item() or 0),
+            float((out.select(pl.col("label").sum()).item() or 0) / out.height) if out.height else 0.0,
+            out.select(pl.struct(["kiosk_id", "anchor_product_id"]).n_unique()).item(),
+        )
+        return out
+
+
+    _banner("STEP 5 — BUILD FEATURES + LABELS")
     labeled_train = _build_labeled_split(
         split_name="Train",
         query_orders=train_orders,
@@ -623,6 +693,8 @@ def run(config: TrainingPipelineConfig) -> None:
     _log_label_stats("Val", labeled_val)
     _log_label_stats("TestLabel", labeled_test)
 
+    _banner("STEP 6 — TRAIN LGBM")
+
     X_train, y_train, g_train = _to_lgbm_arrays(labeled_train)
     X_val, y_val, g_val = _to_lgbm_arrays(labeled_val)
     if len(g_train) == 0 or len(g_val) == 0:
@@ -703,6 +775,8 @@ def run(config: TrainingPipelineConfig) -> None:
     LOGGER.info("Feature importance (gain):")
     LOGGER.info("\n" + imp_df.to_string(index=False))
 
+    _banner("STEP 7 — OFFLINE EVALUATION")
+
     # ---------- Offline evaluation on test_eval ----------
     eval_queries = (
         build_baskets(test_eval_orders)
@@ -761,6 +835,8 @@ def run(config: TrainingPipelineConfig) -> None:
         LOGGER.info("[TEST] NDCG@%s: %.4f", k, ndcg_at_k_by_score(eval_scored, k=k))
         LOGGER.info("[TEST] Precision@%s: %.4f", k, precision_at_k_by_score(eval_scored, k=k))
         LOGGER.info("[TEST] Positives@%s: %.4f", k, positives_at_k_by_score(eval_scored, k=k))
+
+    _banner("STEP 8 — SAVE ARTIFACTS")
 
     config.model_path.parent.mkdir(parents=True, exist_ok=True)
     booster.save_model(str(config.model_path))

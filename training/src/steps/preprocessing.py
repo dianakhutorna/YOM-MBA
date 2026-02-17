@@ -1,4 +1,4 @@
-# Из сырых orders получить каноническую таблицу, пригодную для:
+# Preprocessing steps for raw orders data.
 # basket construction
 # candidate generation
 # ML
