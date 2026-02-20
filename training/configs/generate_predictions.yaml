@@ -17,7 +17,7 @@ min_cooc: 3
 min_lift: 2.0
 top_k_candidates: 100
 catalog_top_k: 100
-candidate_generator: mba  # mba | hybrid | item2vec | hybrid_mba_kiosk
+candidate_generator: hybrid_mba_kiosk  # mba | hybrid | item2vec | hybrid_mba_kiosk
 hybrid_pop_top_k_global: 50
 hybrid_pop_top_k_category: 50
 item2vec_embedding_dim: 64

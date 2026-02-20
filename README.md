@@ -138,6 +138,8 @@ Bundles can be served via **CLI** or **YAML config**.
 # Mac / Linux
 python -m training.src.scripts.serve_bundle --kiosk-id 30037f531441414d92ac845f7f3e1357 --anchor-product-id 004752-001 --excluded-products 004747-001 --n-group-key 3 --n-min 4 --n-max 10
 
+python -m training.src.scripts.serve_bundle --kiosk-id c6fd182599091ddb67ebb5d972d92685 --anchor-product-id 002395-002 --excluded-products 004747-001 --n-group-key 3 --n-min 4 --n-max 10
+
 # Windows
 python -m training.src.scripts.serve_bundle --kiosk-id 30037f531441414d92ac845f7f3e1357 --anchor-product-id 004752-001 --excluded-products 004747-001 --n-group-key 3 --n-min 4 --n-max 10
 

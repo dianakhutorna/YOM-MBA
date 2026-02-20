@@ -28,13 +28,19 @@ LOGGER = logging.getLogger(__name__)
 
 
 def _load_feature_list(model_path: Path, ranker: lgb.Booster) -> list[str]:
-    names = ranker.feature_name()
-    if names:
-        return list(names)
     feature_path = model_path.with_suffix(".features.json")
+    names = list(ranker.feature_name() or [])
+    has_generic_names = bool(names) and all(str(n).startswith("Column_") for n in names)
+
+    # Prefer persisted explicit feature list when model exposes generic Column_* names.
     if feature_path.exists():
-        return json.loads(feature_path.read_text(encoding="utf-8"))
-    return []
+        file_names = json.loads(feature_path.read_text(encoding="utf-8"))
+        if has_generic_names:
+            return list(file_names)
+        if not names:
+            return list(file_names)
+
+    return names
 
 
 def main() -> None:
@@ -79,6 +85,30 @@ def main() -> None:
     orders = load_orders_parquet(orders_path)
     products = load_products_csv(products_path)
     commerces = load_commerces_csv(commerces_path)
+
+    if "active" in commerces.columns:
+        active_kiosks = (
+            commerces
+            .filter(pl.col("active") == True)  # noqa: E712
+            .select(pl.col("userid").cast(pl.Utf8).alias("kiosk_id"))
+            .drop_nulls()
+            .unique()
+        )
+        orders_before = orders.height
+        kiosks_before = orders.select(pl.col("kiosk_id").n_unique()).item()
+        orders = orders.join(active_kiosks, on="kiosk_id", how="inner")
+        commerces = commerces.filter(pl.col("active") == True)  # noqa: E712
+        orders_after = orders.height
+        kiosks_after = orders.select(pl.col("kiosk_id").n_unique()).item() if orders_after > 0 else 0
+        LOGGER.info(
+            "Filtered to active kiosks (inference): rows %s -> %s, kiosks %s -> %s",
+            orders_before,
+            orders_after,
+            kiosks_before,
+            kiosks_after,
+        )
+    else:
+        LOGGER.warning("Column 'active' not found in commerces; skipping active kiosk filter in inference.")
 
     if inference_last_n_days and "order_dt" in orders.columns:
         max_dt = orders.select(pl.col("order_dt").max()).item()

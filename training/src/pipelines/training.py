@@ -17,7 +17,6 @@ from training.src.logging_utils import setup_logging
 from training.src.paths import RAW_DIR, INTERIM_DIR, EXTERNAL_DIR, MODELS_DIR
 from training.src.steps.build_baskets import build_baskets
 from training.src.steps.build_feature_table import build_feature_table
-# from training.src.steps.build_labels import build_labels
 from training.src.steps.build_labels import build_labels, build_label_pairs
 
 from training.src.steps.generate_candidates import generate_candidates
@@ -158,6 +157,30 @@ def run(config: TrainingPipelineConfig) -> None:
 
     products = load_products_csv(config.products_path)
     commerces = load_commerces_csv(config.commerces_path)
+
+    if "active" in commerces.columns:
+        active_kiosks = (
+            commerces
+            .filter(pl.col("active") == True)  # noqa: E712
+            .select(pl.col("userid").cast(pl.Utf8).alias("kiosk_id"))
+            .drop_nulls()
+            .unique()
+        )
+        rows_before = clean_orders.height
+        kiosks_before = clean_orders.select(pl.col("kiosk_id").n_unique()).item()
+        clean_orders = clean_orders.join(active_kiosks, on="kiosk_id", how="inner")
+        commerces = commerces.filter(pl.col("active") == True)  # noqa: E712
+        rows_after = clean_orders.height
+        kiosks_after = clean_orders.select(pl.col("kiosk_id").n_unique()).item() if rows_after > 0 else 0
+        LOGGER.info(
+            "Filtered to active kiosks: rows %s -> %s, kiosks %s -> %s",
+            rows_before,
+            rows_after,
+            kiosks_before,
+            kiosks_after,
+        )
+    else:
+        LOGGER.warning("Column 'active' not found in commerces; skipping active kiosk filter.")
 
     _banner("STEP 2 — SPLIT DATA")
 
@@ -700,8 +723,19 @@ def run(config: TrainingPipelineConfig) -> None:
     if len(g_train) == 0 or len(g_val) == 0:
         raise ValueError("Empty train/val groups; adjust split ratios or data volume.")
 
-    train_set = lgb.Dataset(X_train, label=y_train, group=g_train)
-    valid_set = lgb.Dataset(X_val, label=y_val, group=g_val, reference=train_set)
+    train_set = lgb.Dataset(
+        X_train,
+        label=y_train,
+        group=g_train,
+        feature_name=feature_cols,
+    )
+    valid_set = lgb.Dataset(
+        X_val,
+        label=y_val,
+        group=g_val,
+        feature_name=feature_cols,
+        reference=train_set,
+    )
 
     eval_ks = sorted({k for k in config.eval_ks if k > 0}) or [20]
     params = {
