@@ -1,0 +1,5 @@
+extends: training_pipeline.yaml
+
+n_rows: 500000
+num_boost_round: 500
+early_stopping_rounds: 50

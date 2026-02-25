@@ -317,34 +317,3 @@ def build_labels(
     )
 
     return labeled
-
-
-def build_label_pairs(
-    test_orders: pl.DataFrame,
-    *,
-    window_days: int | None = None,
-    min_cooc_label: int | None = None,
-    dt_col: str = "order_dt",
-    kiosk_batch_size: int | None = 0,
-) -> pl.DataFrame:
-    """
-    Build positive (kiosk, anchor, candidate) pairs from orders.
-    Useful for early query filtering before candidate feature generation.
-    """
-    _ensure_columns(test_orders, REQUIRED_TEST_ORDER_COLS)
-    if window_days is not None and dt_col not in test_orders.columns:
-        raise ValueError(f"Missing datetime column for windowed labels: {dt_col}")
-
-    if min_cooc_label is None or min_cooc_label < 1:
-        min_cooc_label = 1
-
-    pairs = _build_test_pairs_batched(
-        test_orders,
-        window_days=window_days,
-        dt_col=dt_col,
-        kiosk_batch_size=kiosk_batch_size,
-    )
-    if min_cooc_label > 1:
-        pairs = pairs.filter(pl.col("cooc_count") >= min_cooc_label)
-
-    return pairs.select(["kiosk_id", "anchor_product_id", "candidate_product_id", "cooc_count"])

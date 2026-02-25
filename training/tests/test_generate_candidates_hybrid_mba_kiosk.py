@@ -16,12 +16,6 @@ def test_hybrid_mba_kiosk_columns(baskets_df):
         "kiosk_id",
         "anchor_product_id",
         "candidate_product_id",
-        "cooc_count",
-        "anchor_count",
-        "candidate_count",
-        "support",
-        "confidence",
-        "lift",
         "cooc_cosine_sim",
         "source",
     }

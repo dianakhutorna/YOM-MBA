@@ -3,5 +3,5 @@ include_kiosk_features: true
 include_behavioral_features: true
 include_personalization_features: false
 include_popularity_features: false
-encode_channel: true
-encode_region: true
+encode_channel: false
+encode_region: false

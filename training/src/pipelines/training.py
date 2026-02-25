@@ -500,19 +500,58 @@ def run(config: TrainingPipelineConfig) -> None:
     )
 
     non_feature_cols = {"kiosk_id", "anchor_product_id", "candidate_product_id", "label"}
+    categorical_candidates = ("channel", "region")
     numeric_dtypes = {
         pl.Int8, pl.Int16, pl.Int32, pl.Int64,
         pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
         pl.Float32, pl.Float64, pl.Boolean,
     }
-    feature_cols = [
+    numeric_feature_cols = [
         c for c, dtype in labeled_train.schema.items()
         if c not in non_feature_cols and dtype in numeric_dtypes
     ]
-    feature_cols = sorted(feature_cols)
+    #feature_cols = sorted(feature_cols)
+    categorical_feature_cols = [
+        c for c in categorical_candidates
+        if c in labeled_train.columns and c not in non_feature_cols
+    ]
+    feature_cols = sorted(numeric_feature_cols) + sorted(categorical_feature_cols)
 
     def _fill_missing_features(df: pl.DataFrame) -> pl.DataFrame:
-        return df.with_columns([pl.col(c).fill_null(0) for c in feature_cols])
+        #return df.with_columns([pl.col(c).fill_null(0) for c in feature_cols])
+        exprs: list[pl.Expr] = [pl.col(c).fill_null(0) for c in numeric_feature_cols]
+        exprs.extend(
+            pl.col(c).cast(pl.Utf8).fill_null("__MISSING__")
+            for c in categorical_feature_cols
+        )
+        return df.with_columns(exprs)
+
+    def _lgbm_feature_exprs(cols: list[str]) -> list[pl.Expr]:
+        exprs: list[pl.Expr] = []
+        for c in cols:
+            if c in categorical_feature_cols:
+                exprs.append(
+                    pl.col(c)
+                    .cast(pl.Utf8)
+                    .fill_null("__MISSING__")
+                    .hash(seed=42, seed_1=43, seed_2=44, seed_3=45)
+                    .cast(pl.Float64)
+                )
+            else:
+                exprs.append(pl.col(c).fill_null(0).cast(pl.Float64))
+        return exprs
+
+    def _ensure_feature_columns(df: pl.DataFrame) -> pl.DataFrame:
+        missing_exprs: list[pl.Expr] = []
+        for c in feature_cols:
+            if c not in df.columns:
+                if c in categorical_feature_cols:
+                    missing_exprs.append(pl.lit("__MISSING__").alias(c))
+                else:
+                    missing_exprs.append(pl.lit(0).alias(c))
+        if missing_exprs:
+            df = df.with_columns(missing_exprs)
+        return df
 
     labeled_train = _fill_missing_features(labeled_train)
     labeled_val = _fill_missing_features(labeled_val)
@@ -660,7 +699,7 @@ def run(config: TrainingPipelineConfig) -> None:
         )
         X = (
             sorted_df
-            .select([pl.col(c).cast(pl.Float32) for c in feature_cols])
+            .select(_lgbm_feature_exprs(feature_cols))
             .to_numpy()
         )
         y = (
@@ -684,7 +723,7 @@ def run(config: TrainingPipelineConfig) -> None:
         for start in range(0, df.height, batch_size):
             chunk = (
                 df.slice(start, batch_size)
-                .select([pl.col(c).cast(pl.Float32) for c in cols])
+                .select(_lgbm_feature_exprs(cols))
                 .to_numpy()
             )
             out.append(np.asarray(model.predict(chunk)))
@@ -846,11 +885,9 @@ def run(config: TrainingPipelineConfig) -> None:
         min_cooc_label=config.min_cooc_label,
         kiosk_batch_size=config.label_kiosk_batch_size,
     )
-    for c in feature_cols:
-        if c not in eval_labeled.columns:
-            eval_labeled = eval_labeled.with_columns(pl.lit(0).alias(c))
+    eval_labeled = _ensure_feature_columns(eval_labeled)
+    eval_labeled = _fill_missing_features(eval_labeled)
     eval_labeled = eval_labeled.with_columns(
-        [pl.col(c).fill_null(0) for c in feature_cols] +
         [pl.col("label").fill_null(0).cast(pl.Int8)]
     )
     eval_scores = _predict_scores_batched(

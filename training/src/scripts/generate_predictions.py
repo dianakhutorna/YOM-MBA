@@ -7,6 +7,7 @@ from pathlib import Path
 
 import lightgbm as lgb
 import numpy as np
+import pandas as pd
 import polars as pl
 
 from training.src.config import FeatureConfig, load_yaml_config
@@ -133,7 +134,8 @@ def main() -> None:
     model_feature_cols = _load_feature_list(model_path, ranker)
     if not model_feature_cols:
         raise ValueError("Model feature list is empty; retrain to persist features.")
-
+    categorical_feature_cols = [c for c in ("channel", "region") if c in model_feature_cols]
+    numeric_feature_cols = [c for c in model_feature_cols if c not in categorical_feature_cols]
     if "pop_score" in model_feature_cols and candidate_generator != "hybrid":
         LOGGER.warning(
             "Model expects pop_score but candidate_generator=%s. Switching to hybrid.",
@@ -213,17 +215,22 @@ def main() -> None:
 
     missing_cols = [col for col in model_feature_cols if col not in feature_table.columns]
     if missing_cols:
-        LOGGER.warning("Missing features in inference: %s. Adding zeros (this may impact predictions!)", missing_cols)
+        LOGGER.warning(
+            "Missing features in inference: %s. Filling defaults (0 for numeric, __MISSING__ for categorical).",
+            missing_cols,
+        )
         for col in missing_cols:
-            feature_table = feature_table.with_columns(pl.lit(0).alias(col))
-    
-    feature_table = feature_table.with_columns([pl.col(c).fill_null(0) for c in model_feature_cols])
-
+            fill_value = "__MISSING__" if col in categorical_feature_cols else 0
+            feature_table = feature_table.with_columns(pl.lit(fill_value).alias(col))
+    feature_table = feature_table.with_columns(
+        [pl.col(c).fill_null(0) for c in numeric_feature_cols] +
+        [pl.col(c).cast(pl.Utf8).fill_null("__MISSING__") for c in categorical_feature_cols]
+    )
     feature_max_abs = feature_table.select(
-        [pl.col(c).abs().max().alias(c) for c in model_feature_cols]
-    ).row(0)
+        [pl.col(c).abs().max().alias(c) for c in numeric_feature_cols]
+    ).row(0) if numeric_feature_cols else tuple()
     zero_only = [
-        name for name, max_abs in zip(model_feature_cols, feature_max_abs)
+        name for name, max_abs in zip(numeric_feature_cols, feature_max_abs)
         if max_abs == 0 or max_abs is None
     ]
     if zero_only:
@@ -239,11 +246,12 @@ def main() -> None:
         batch_size = max(1, int(batch_size))
         out: list[np.ndarray] = []
         for start in range(0, df.height, batch_size):
-            chunk = (
-                df.slice(start, batch_size)
-                .select([pl.col(c).cast(pl.Float32) for c in cols])
-                .to_numpy()
-            )
+            chunk_pl = df.slice(start, batch_size).select(cols)
+            chunk = chunk_pl.to_pandas(use_pyarrow_extension_array=False)
+            for col in numeric_feature_cols:
+                chunk[col] = pd.to_numeric(chunk[col], errors="coerce").fillna(0).astype("float32")
+            for col in categorical_feature_cols:
+                chunk[col] = chunk[col].astype("string").fillna("__MISSING__").astype("category")
             out.append(np.asarray(ranker.predict(chunk)))
         return np.concatenate(out) if out else np.array([], dtype=np.float64)
 
