@@ -73,6 +73,12 @@ def ndcg_at_k_by_score(
     if df.height == 0:
         return 0.0
 
+    # Total positives per group (BEFORE top-K filtering) — needed for IDCG
+    total_pos_per_group = (
+        df.group_by(["kiosk_id", "anchor_product_id"])
+        .agg(pl.col("label").sum().alias("n_pos_total"))
+    )
+
     # Top-K per group by predicted score
     topk = (
         df.with_columns(
@@ -94,28 +100,39 @@ def ndcg_at_k_by_score(
 
     dcg_per_group = topk.group_by(["kiosk_id", "anchor_product_id"]).agg(
         pl.sum("_dcg_gain").alias("dcg"),
-        pl.sum("label").alias("n_pos"),
-    ).filter(pl.col("n_pos") > 0)
+    )
+
+    # Join total positives and cap at K for IDCG
+    dcg_per_group = (
+        dcg_per_group
+        .join(total_pos_per_group, on=["kiosk_id", "anchor_product_id"], how="inner")
+        .filter(pl.col("n_pos_total") > 0)
+        .with_columns(
+            pl.when(pl.col("n_pos_total") > k)
+            .then(k)
+            .otherwise(pl.col("n_pos_total"))
+            .alias("n_pos_for_idcg")
+        )
+    )
 
     if dcg_per_group.height == 0:
         return 0.0
 
-    # IDCG for binary labels: sum_{j=1}^{n_pos} 1/log2(j+1)
-    # Use a precomputed lookup table keyed on n_pos.
-    max_pos = int(dcg_per_group.select(pl.max("n_pos")).item() or 0)
+    # IDCG for binary labels: sum_{j=1}^{min(n_pos_total, K)} 1/log2(j+1)
+    max_pos = int(dcg_per_group.select(pl.max("n_pos_for_idcg")).item() or 0)
     if max_pos == 0:
         return 0.0
 
     cum_idcg = np.cumsum(1.0 / np.log2(np.arange(2, max_pos + 2)))
     idcg_lookup = pl.DataFrame({
-        "n_pos": list(range(1, max_pos + 1)),
+        "n_pos_for_idcg": list(range(1, max_pos + 1)),
         "idcg": cum_idcg.tolist(),
-    }).with_columns(pl.col("n_pos").cast(pl.Int64))
+    }).with_columns(pl.col("n_pos_for_idcg").cast(pl.Int64))
 
     ndcg_df = (
         dcg_per_group
-        .with_columns(pl.col("n_pos").cast(pl.Int64))
-        .join(idcg_lookup, on="n_pos", how="left")
+        .with_columns(pl.col("n_pos_for_idcg").cast(pl.Int64))
+        .join(idcg_lookup, on="n_pos_for_idcg", how="left")
         .with_columns((pl.col("dcg") / pl.col("idcg")).alias("ndcg"))
     )
 
@@ -473,6 +490,58 @@ def category_coverage_lift_at_k(
     )
 
     return float(lift.select(pl.mean("coverage_lift")).item())
+
+def mrr_at_k_by_score(
+    df: pl.DataFrame,
+    k: int = 20,
+    score_col: str = "score",
+) -> float:
+    """
+    Mean Reciprocal Rank @ K.
+
+    For each group, RR = 1/rank of the first relevant item in top-K
+    (0 if no relevant item).
+    Averaged over groups with at least one positive.
+    """
+    valid_groups = (
+        df.filter(pl.col("label") == 1)
+        .select(["kiosk_id", "anchor_product_id"])
+        .unique()
+    )
+    df = df.join(valid_groups, on=["kiosk_id", "anchor_product_id"], how="inner")
+
+    topk = (
+        df.with_columns(
+            pl.col(score_col)
+            .rank("ordinal", descending=True)
+            .over(["kiosk_id", "anchor_product_id"])
+            .alias("_rank")
+        )
+        .filter(pl.col("_rank") <= k)
+    )
+
+    # Keep only positive hits, take the best (smallest) rank per group
+    first_hit = (
+        topk.filter(pl.col("label") == 1)
+        .group_by(["kiosk_id", "anchor_product_id"])
+        .agg(pl.min("_rank").alias("first_rank"))
+    )
+
+    # Groups without a hit get RR=0
+    rr = (
+        valid_groups
+        .join(first_hit, on=["kiosk_id", "anchor_product_id"], how="left")
+        .with_columns(
+            pl.when(pl.col("first_rank").is_null())
+            .then(0.0)
+            .otherwise(1.0 / pl.col("first_rank"))
+            .alias("rr")
+        )
+    )
+
+    result = rr.select(pl.mean("rr")).item()
+    return float(result) if result is not None else 0.0
+
 
 def precision_at_k_by_score(
     df: pl.DataFrame,

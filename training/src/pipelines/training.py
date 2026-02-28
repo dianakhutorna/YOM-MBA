@@ -47,6 +47,7 @@ from training.src.steps.rank_eval_at_k import (
     ndcg_at_k_by_score,
     positives_at_k_by_score,
     precision_at_k_by_score,
+    mrr_at_k_by_score,
 )
 
 
@@ -86,7 +87,6 @@ class TrainingPipelineConfig:
     train_ratio: float
     val_ratio: float
     test_ratio: float
-    test_eval_ratio: float
     train_label_ratio: float
     min_cooc: int
     min_lift: float
@@ -97,7 +97,6 @@ class TrainingPipelineConfig:
     label_kiosk_batch_size: int
     max_neg_per_group: int
     eval_ks: list[int]
-    eval_extra_neg_per_query: int
     features_config_path: Path | None
     drop_feature_columns: list[str]
     predict_batch_size: int
@@ -123,7 +122,6 @@ class TrainingPipelineConfig:
             train_ratio=float(data.get("train_ratio", 0.8)),
             val_ratio=float(data.get("val_ratio", 0.1)),
             test_ratio=float(data.get("test_ratio", 0.1)),
-            test_eval_ratio=float(data.get("test_eval_ratio", 0.5)),
             train_label_ratio=float(data.get("train_label_ratio", 0.3)),
             min_cooc=int(data.get("min_cooc", 3)),
             min_lift=float(data.get("min_lift", 2.0)),
@@ -134,7 +132,6 @@ class TrainingPipelineConfig:
             label_kiosk_batch_size=int(data.get("label_kiosk_batch_size", 0)),
             max_neg_per_group=int(data.get("max_neg_per_group", 60)),
             eval_ks=[int(k) for k in data.get("eval_ks", [20])],
-            eval_extra_neg_per_query=int(data.get("eval_extra_neg_per_query", 0)),
             features_config_path=Path(data["features_config_path"]) if data.get("features_config_path") else None,
             drop_feature_columns=list(data.get("drop_feature_columns", DEFAULT_DROP_COLUMNS)),
             predict_batch_size=int(data.get("predict_batch_size", 200_000)),
@@ -368,53 +365,6 @@ def filter_active_kiosks(
     return orders, commerces
 
 
-def augment_with_random_negatives(
-    eval_queries: pl.DataFrame,
-    eval_candidates: pl.DataFrame,
-    products: pl.DataFrame,
-    extra_per_query: int,
-    seed: int = 42,
-) -> pl.DataFrame:
-    """Inject random products as hard negatives for evaluation."""
-    if extra_per_query <= 0 or eval_queries.height == 0:
-        return eval_candidates
-    prod_ids = (
-        products
-        .select(pl.col("productid").cast(pl.Utf8).alias("candidate_product_id"))
-        .unique()
-        .to_series()
-        .to_list()
-    )
-    if not prod_ids:
-        return eval_candidates
-    q = eval_queries.select(["kiosk_id", "anchor_product_id"])
-    kiosk_vals = np.array(q["kiosk_id"].to_list(), dtype=object)
-    anchor_vals = np.array(q["anchor_product_id"].to_list(), dtype=object)
-    n_queries = len(kiosk_vals)
-    if n_queries == 0:
-        return eval_candidates
-    rng = np.random.default_rng(seed)
-    idx = rng.integers(0, len(prod_ids), size=(n_queries, extra_per_query))
-    sampled = np.array([prod_ids[i] for i in idx.ravel()], dtype=object)
-    extra = pl.DataFrame(
-        {
-            "kiosk_id": np.repeat(kiosk_vals, extra_per_query),
-            "anchor_product_id": np.repeat(anchor_vals, extra_per_query),
-            "candidate_product_id": sampled,
-        }
-    ).filter(pl.col("candidate_product_id") != pl.col("anchor_product_id"))
-    extra = extra.join(
-        eval_candidates.select(KEY_COLS),
-        on=KEY_COLS,
-        how="anti",
-    )
-    missing_cols = [c for c in eval_candidates.columns if c not in extra.columns]
-    if missing_cols:
-        extra = extra.with_columns([pl.lit(None).alias(c) for c in missing_cols])
-    extra = extra.select(eval_candidates.columns)
-    return pl.concat([eval_candidates, extra], how="vertical")
-
-
 # ============================================================
 # Pipeline
 # ============================================================
@@ -458,51 +408,13 @@ def run(config: TrainingPipelineConfig) -> None:
     # ---- STEP 2: SPLIT DATA ----
     _banner("STEP 2 — SPLIT DATA")
 
-    train_orders, val_orders, test_holdout_orders = split_orders_by_time(
+    train_orders, val_orders, test_orders = split_orders_by_time(
         clean_orders,
         train_ratio=config.train_ratio,
         val_ratio=config.val_ratio,
         test_ratio=config.test_ratio,
     )
-    for name, df in (("Train", train_orders), ("Val", val_orders), ("TestHoldout", test_holdout_orders)):
-        if df.height == 0:
-            LOGGER.info("%s orders: rows=0", name)
-            continue
-        dt_stats = df.select(
-            pl.col("order_dt").min().alias("min_dt"),
-            pl.col("order_dt").max().alias("max_dt"),
-        ).row(0)
-        LOGGER.info("%s orders date range: %s to %s (rows=%s)", name, dt_stats[0], dt_stats[1], df.height)
-
-    # Sub-split holdout into TestEval / TestLabel by timestamp
-    test_holdout_sorted = test_holdout_orders.sort("order_dt")
-    test_eval_ratio = config.test_eval_ratio
-    if not 0.0 < test_eval_ratio < 1.0:
-        raise ValueError("test_eval_ratio must be between 0 and 1.")
-
-    unique_dts = (
-        test_holdout_sorted
-        .select(pl.col("order_dt").cast(pl.Datetime).alias("order_dt"))
-        .unique()
-        .sort("order_dt")
-        .to_series()
-        .to_list()
-    )
-    if len(unique_dts) < 2:
-        eval_size = int(test_holdout_sorted.height * test_eval_ratio)
-        eval_size = max(1, min(eval_size, max(0, test_holdout_sorted.height - 1)))
-        label_size = test_holdout_sorted.height - eval_size
-        test_eval_orders = test_holdout_sorted.head(eval_size)
-        test_label_orders = test_holdout_sorted.tail(label_size)
-        LOGGER.warning("TestHoldout has <2 unique timestamps; fallback to row split.")
-    else:
-        split_idx = int(len(unique_dts) * test_eval_ratio)
-        split_idx = max(1, min(split_idx, len(unique_dts) - 1))
-        label_start_dt = unique_dts[split_idx]
-        test_eval_orders = test_holdout_sorted.filter(pl.col("order_dt") < label_start_dt)
-        test_label_orders = test_holdout_sorted.filter(pl.col("order_dt") >= label_start_dt)
-
-    for name, df in (("TestLabel", test_label_orders), ("TestEval", test_eval_orders)):
+    for name, df in (("Train", train_orders), ("Val", val_orders), ("Test", test_orders)):
         if df.height == 0:
             LOGGER.info("%s orders: rows=0", name)
             continue
@@ -559,7 +471,6 @@ def run(config: TrainingPipelineConfig) -> None:
     top_k_train = int(config.top_k_train) if config.top_k_train is not None else int(config.top_k)
     top_k_train = max(1, min(top_k_train, config.top_k))
     topk_candidates_train = _generate_topk(top_k_train)
-    topk_candidates_eval = topk_candidates_train if top_k_train == config.top_k else _generate_topk(config.top_k)
 
     feature_config = (
         FeatureConfig.from_yaml(config.features_config_path)
@@ -698,13 +609,13 @@ def run(config: TrainingPipelineConfig) -> None:
         feat_orders=train_orders,
         topk_candidates=topk_candidates_train,
         filter_good=True,
-        do_sample_negatives=False,
+        do_sample_negatives=True,
         shuffle_seed=43,
     )
     labeled_test = _build_labeled_split(
-        split_name="TestLabel",
-        query_orders=test_label_orders,
-        label_orders=test_label_orders,
+        split_name="Test",
+        query_orders=test_orders,
+        label_orders=test_orders,
         feat_orders=train_orders,
         topk_candidates=topk_candidates_train,
         filter_good=False,
@@ -736,7 +647,8 @@ def run(config: TrainingPipelineConfig) -> None:
 
     log_label_stats("Train", labeled_train)
     log_label_stats("Val", labeled_val)
-    log_label_stats("TestLabel", labeled_test)
+    log_label_stats("Test", labeled_test)
+    LOGGER.info("Feature columns (%d): %s", len(feature_cols), feature_cols)
 
     # ---- STEP 6: TRAIN LGBM ----
     _banner("STEP 6 — TRAIN LGBM")
@@ -812,42 +724,23 @@ def run(config: TrainingPipelineConfig) -> None:
     # ---- STEP 7: OFFLINE EVALUATION ----
     _banner("STEP 7 — OFFLINE EVALUATION")
 
-    eval_queries = (
-        build_baskets(test_eval_orders)
-        .select(["kiosk_id", "products"])
-        .explode("products")
-        .rename({"products": "anchor_product_id"})
-        .unique()
-    )
-    eval_feature_table = build_feature_table(
-        baskets=baskets_train, topk_candidates=topk_candidates_eval, queries=eval_queries,
-    )
+    # Use the pre-built labeled_test from Step 5 (same features, same
+    # candidate set, already labeled).  No need to rebuild anything.
+    eval_labeled = labeled_test
+    eval_labeled = ensure_feature_columns(eval_labeled, feature_cols, categorical_feature_cols)
+    eval_labeled = fill_missing_features(eval_labeled, numeric_feature_cols, categorical_feature_cols)
+    eval_labeled = eval_labeled.with_columns(pl.col("label").fill_null(0).cast(pl.Int8))
+
+    # Candidate recall: how many true positives are in the candidate set
+    eval_queries = eval_labeled.select(["kiosk_id", "anchor_product_id"]).unique()
     log_candidate_recall(
         eval_queries=eval_queries,
-        eval_candidates=eval_feature_table,
-        label_orders=test_label_orders,
+        eval_candidates=eval_labeled,
+        label_orders=test_orders,
         window_days=config.label_window_days,
         min_cooc_label=config.min_cooc_label,
         kiosk_batch_size=config.label_kiosk_batch_size,
     )
-    if config.eval_extra_neg_per_query > 0:
-        eval_feature_table = augment_with_random_negatives(
-            eval_queries=eval_queries,
-            eval_candidates=eval_feature_table,
-            products=products,
-            extra_per_query=config.eval_extra_neg_per_query,
-            seed=123,
-        )
-
-    eval_feature_table = _add_features(eval_feature_table, train_orders)
-    eval_labeled = build_labels(
-        eval_feature_table, test_label_orders,
-        window_days=config.label_window_days, min_cooc_label=config.min_cooc_label,
-        kiosk_batch_size=config.label_kiosk_batch_size,
-    )
-    eval_labeled = ensure_feature_columns(eval_labeled, feature_cols, categorical_feature_cols)
-    eval_labeled = fill_missing_features(eval_labeled, numeric_feature_cols, categorical_feature_cols)
-    eval_labeled = eval_labeled.with_columns(pl.col("label").fill_null(0).cast(pl.Int8))
 
     eval_scores = predict_scores_batched(
         booster, eval_labeled, feature_cols, categorical_feature_cols,
@@ -856,13 +749,41 @@ def run(config: TrainingPipelineConfig) -> None:
     eval_scored = eval_labeled.with_columns(pl.Series("score", eval_scores))
     eval_scored = shuffle_within_query(eval_scored, seed=99)
 
-    log_label_stats("TestEval", eval_labeled)
-    for k in eval_ks:
-        LOGGER.info("[TEST] HitRate@%s: %.4f", k, hitrate_at_k_by_score(eval_scored, k=k))
-        LOGGER.info("[TEST] Recall@%s: %.4f", k, recall_at_k_by_score(eval_scored, k=k))
-        LOGGER.info("[TEST] NDCG@%s: %.4f", k, ndcg_at_k_by_score(eval_scored, k=k))
-        LOGGER.info("[TEST] Precision@%s: %.4f", k, precision_at_k_by_score(eval_scored, k=k))
-        LOGGER.info("[TEST] Positives@%s: %.4f", k, positives_at_k_by_score(eval_scored, k=k))
+    n_eval_queries = eval_scored.select(pl.struct(["kiosk_id", "anchor_product_id"]).n_unique()).item()
+    n_eval_queries_with_pos = (
+        eval_scored.filter(pl.col("label") == 1)
+        .select(pl.struct(["kiosk_id", "anchor_product_id"]).n_unique()).item()
+    )
+    log_label_stats("Test", eval_labeled)
+    LOGGER.info(
+        "Test queries total: %s, with >=1 positive: %s (%.1f%%)",
+        n_eval_queries, n_eval_queries_with_pos,
+        100.0 * n_eval_queries_with_pos / n_eval_queries if n_eval_queries else 0.0,
+    )
+
+    # Compute all metrics and display as a compact table
+    metric_funcs = [
+        ("HitRate",   hitrate_at_k_by_score),
+        ("Recall",    recall_at_k_by_score),
+        ("NDCG",      ndcg_at_k_by_score),
+        ("MRR",       mrr_at_k_by_score),
+        ("Precision", precision_at_k_by_score),
+        ("Positives", positives_at_k_by_score),
+    ]
+    metric_results: dict[str, dict[int, float]] = {}
+    for metric_name, metric_fn in metric_funcs:
+        metric_results[metric_name] = {}
+        for k in eval_ks:
+            metric_results[metric_name][k] = metric_fn(eval_scored, k=k)
+
+    # Build summary table
+    k_headers = "  ".join(f"{'@' + str(k):>8s}" for k in eval_ks)
+    table_lines = [f"{'Metric':<12s}  {k_headers}"]
+    table_lines.append("-" * len(table_lines[0]))
+    for metric_name in metric_results:
+        vals = "  ".join(f"{metric_results[metric_name][k]:>8.4f}" for k in eval_ks)
+        table_lines.append(f"{metric_name:<12s}  {vals}")
+    LOGGER.info("\n[TEST] Offline evaluation results:\n%s", "\n".join(table_lines))
 
     # ---- STEP 8: SAVE ARTIFACTS ----
     _banner("STEP 8 — SAVE ARTIFACTS")
