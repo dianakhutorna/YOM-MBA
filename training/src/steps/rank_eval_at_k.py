@@ -58,36 +58,69 @@ def ndcg_at_k_by_score(
     """
     Compute mean NDCG@K over (kiosk_id, anchor_product_id) groups.
     Assumes binary relevance (label ∈ {0,1}).
+
+    Fully vectorized via Polars — no Python-level group iteration.
     """
 
-    ndcgs = []
+    # Keep only groups with at least one positive
+    valid_groups = (
+        df.filter(pl.col("label") == 1)
+        .select(["kiosk_id", "anchor_product_id"])
+        .unique()
+    )
+    df = df.join(valid_groups, on=["kiosk_id", "anchor_product_id"], how="inner")
 
-    grouped = df.group_by(["kiosk_id", "anchor_product_id"])
-
-    for _, group in grouped:
-        # sort by predicted score
-        group = group.sort(score_col, descending=True).head(k)
-
-        rel = group["label"].to_numpy()
-
-        if rel.sum() == 0:
-            continue  # skip groups with no positives
-
-        # DCG
-        discounts = 1.0 / np.log2(np.arange(2, len(rel) + 2))
-        dcg = np.sum(rel * discounts)
-
-        # IDCG
-        ideal_rel = np.sort(rel)[::-1]
-        idcg = np.sum(ideal_rel * discounts)
-
-        if idcg > 0:
-            ndcgs.append(dcg / idcg)
-
-    if len(ndcgs) == 0:
+    if df.height == 0:
         return 0.0
 
-    return float(np.mean(ndcgs))
+    # Top-K per group by predicted score
+    topk = (
+        df.with_columns(
+            pl.col(score_col)
+            .rank("ordinal", descending=True)
+            .over(["kiosk_id", "anchor_product_id"])
+            .alias("_rank")
+        )
+        .filter(pl.col("_rank") <= k)
+    )
+
+    # DCG: gain = label / log2(rank + 1)
+    topk = topk.with_columns(
+        (
+            pl.col("label").cast(pl.Float64)
+            / (pl.col("_rank") + 1).cast(pl.Float64).log(base=2)
+        ).alias("_dcg_gain")
+    )
+
+    dcg_per_group = topk.group_by(["kiosk_id", "anchor_product_id"]).agg(
+        pl.sum("_dcg_gain").alias("dcg"),
+        pl.sum("label").alias("n_pos"),
+    ).filter(pl.col("n_pos") > 0)
+
+    if dcg_per_group.height == 0:
+        return 0.0
+
+    # IDCG for binary labels: sum_{j=1}^{n_pos} 1/log2(j+1)
+    # Use a precomputed lookup table keyed on n_pos.
+    max_pos = int(dcg_per_group.select(pl.max("n_pos")).item() or 0)
+    if max_pos == 0:
+        return 0.0
+
+    cum_idcg = np.cumsum(1.0 / np.log2(np.arange(2, max_pos + 2)))
+    idcg_lookup = pl.DataFrame({
+        "n_pos": list(range(1, max_pos + 1)),
+        "idcg": cum_idcg.tolist(),
+    }).with_columns(pl.col("n_pos").cast(pl.Int64))
+
+    ndcg_df = (
+        dcg_per_group
+        .with_columns(pl.col("n_pos").cast(pl.Int64))
+        .join(idcg_lookup, on="n_pos", how="left")
+        .with_columns((pl.col("dcg") / pl.col("idcg")).alias("ndcg"))
+    )
+
+    result = ndcg_df.select(pl.mean("ndcg")).item()
+    return float(result) if result is not None else 0.0
 
 def positives_at_k_by_score(
     df: pl.DataFrame,

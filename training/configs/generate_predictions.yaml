@@ -7,24 +7,21 @@ features_config_path: training/configs/features.yaml
 predictions_path: training/data/interim/predictions.parquet
 popularity_path: training/data/interim/popularity_fallback.parquet
 
+# Data selection for inference.
+# Use inference_last_n_days to set recency window (0 = disable).
+# Use inference_max_rows = 0 for unlimited (cover all kiosks).
+# Training on a small sample is fine; inference should use MORE data
+# to maximize kiosk coverage.
 train_ratio: 0.7
 val_ratio: 0.1
 test_ratio: 0.2
 inference_last_n_days: 30
-inference_max_rows: 300000
+inference_max_rows: 0  # 0 = unlimited — use all data from the time window
 
 min_cooc: 2
 min_lift: 1.2
 top_k_candidates: 50
 catalog_top_k: 100
-candidate_generator: hybrid_mba_kiosk  # mba | hybrid | item2vec | hybrid_mba_kiosk
-hybrid_pop_top_k_global: 50
-hybrid_pop_top_k_category: 50
-item2vec_embedding_dim: 64
-item2vec_svd_n_iter: 10
-item2vec_random_state: 42
-hybrid_mba_kiosk_share: 0.5
-hybrid_mba_kiosk_batch_size: 100
 predict_batch_size: 200000
 normalize_popularity: true
 query_sample_n: 0
