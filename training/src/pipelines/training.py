@@ -204,11 +204,30 @@ def run(config: TrainingPipelineConfig) -> None:
     test_eval_ratio = config.test_eval_ratio
     if not 0.0 < test_eval_ratio < 1.0:
         raise ValueError("test_eval_ratio must be between 0 and 1.")
-    eval_size = int(test_holdout_sorted.height * test_eval_ratio)
-    eval_size = max(1, min(eval_size, max(0, test_holdout_sorted.height - 1)))
-    label_size = test_holdout_sorted.height - eval_size
-    test_eval_orders = test_holdout_sorted.head(eval_size)
-    test_label_orders = test_holdout_sorted.tail(label_size)
+    # Split holdout by timestamp (not by rows) to avoid shared order_dt across TestEval/TestLabel.
+    unique_dts = (
+        test_holdout_sorted
+        .select(pl.col("order_dt").cast(pl.Datetime).alias("order_dt"))
+        .unique()
+        .sort("order_dt")
+        .to_series()
+        .to_list()
+    )
+    if len(unique_dts) < 2:
+        eval_size = int(test_holdout_sorted.height * test_eval_ratio)
+        eval_size = max(1, min(eval_size, max(0, test_holdout_sorted.height - 1)))
+        label_size = test_holdout_sorted.height - eval_size
+        test_eval_orders = test_holdout_sorted.head(eval_size)
+        test_label_orders = test_holdout_sorted.tail(label_size)
+        LOGGER.warning(
+            "TestHoldout has <2 unique timestamps; fallback to row split for TestEval/TestLabel."
+        )
+    else:
+        split_idx = int(len(unique_dts) * test_eval_ratio)
+        split_idx = max(1, min(split_idx, len(unique_dts) - 1))
+        label_start_dt = unique_dts[split_idx]
+        test_eval_orders = test_holdout_sorted.filter(pl.col("order_dt") < label_start_dt)
+        test_label_orders = test_holdout_sorted.filter(pl.col("order_dt") >= label_start_dt)
     for name, df in (("TestLabel", test_label_orders), ("TestEval", test_eval_orders)):
         if df.height == 0:
             LOGGER.info("%s orders: rows=0", name)
