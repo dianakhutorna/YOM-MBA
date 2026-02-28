@@ -53,21 +53,6 @@ from training.src.steps.rank_eval_at_k import (
 
 LOGGER = logging.getLogger(__name__)
 
-# Columns that are raw MBA metrics or known leaking features;
-# they should never be used as model features.
-DEFAULT_DROP_COLUMNS: list[str] = [
-    "cand_is_new_for_kiosk",
-    "anchor_kiosk_frequency",
-    "kiosk_bought_candidate_before",
-    "candidate_count",
-    "support",
-    "lift",
-    "confidence",
-    "same_category",
-    "cooc_count",
-    "anchor_count",
-]
-
 KEY_COLS = ["kiosk_id", "anchor_product_id", "candidate_product_id"]
 
 
@@ -96,9 +81,9 @@ class TrainingPipelineConfig:
     min_cooc_label: int
     label_kiosk_batch_size: int
     max_neg_per_group: int
+    max_eval_queries: int
     eval_ks: list[int]
     features_config_path: Path | None
-    drop_feature_columns: list[str]
     predict_batch_size: int
     lgbm_params: dict
     num_boost_round: int
@@ -131,9 +116,9 @@ class TrainingPipelineConfig:
             min_cooc_label=int(data.get("min_cooc_label", 1)),
             label_kiosk_batch_size=int(data.get("label_kiosk_batch_size", 0)),
             max_neg_per_group=int(data.get("max_neg_per_group", 60)),
+            max_eval_queries=int(data.get("max_eval_queries", 50_000)),
             eval_ks=[int(k) for k in data.get("eval_ks", [20])],
             features_config_path=Path(data["features_config_path"]) if data.get("features_config_path") else None,
-            drop_feature_columns=list(data.get("drop_feature_columns", DEFAULT_DROP_COLUMNS)),
             predict_batch_size=int(data.get("predict_batch_size", 200_000)),
             lgbm_params=dict(data.get("lgbm_params", {})),
             num_boost_round=int(data.get("num_boost_round", 2000)),
@@ -164,7 +149,7 @@ def filter_good_queries(df: pl.DataFrame) -> pl.DataFrame:
     good = stats.filter((pl.col("q_size") > 1) & (pl.col("q_pos") > 0)).select("query_id")
     out = df.join(good, on="query_id", how="inner").drop("query_id")
     removed = stats.height - good.height
-    LOGGER.info("Queries total: %s, kept: %s, removed: %s", stats.height, good.height, removed)
+    LOGGER.debug("Queries total: %s, kept: %s, removed: %s", stats.height, good.height, removed)
     return out
 
 
@@ -483,17 +468,19 @@ def run(config: TrainingPipelineConfig) -> None:
             ft, orders=feat_orders, products=products, commerces=commerces, config=feature_config,
         )
 
-    drop_cols = config.drop_feature_columns
-
-    def _drop_unwanted(ft: pl.DataFrame) -> pl.DataFrame:
-        present = [c for c in drop_cols if c in ft.columns]
-        if present:
-            LOGGER.info("Dropping unwanted feature columns: %s", present)
-            ft = ft.drop(present)
-        return ft
-
     # ---- STEP 5: BUILD FEATURES + LABELS ----
     _banner("STEP 5 — BUILD FEATURES + LABELS")
+
+    # Suppress sub-module loggers during Step 5 (details are noise here;
+    # the final summary table shows everything we need).
+    _step5_loggers = [
+        logging.getLogger("training.src.steps.build_baskets"),
+        logging.getLogger("training.src.steps.build_labels"),
+        logging.getLogger("training.src.steps.build_feature_table"),
+    ]
+    _step5_saved_levels = [lg.level for lg in _step5_loggers]
+    for lg in _step5_loggers:
+        lg.setLevel(logging.WARNING)
 
     def _build_queries(orders: pl.DataFrame) -> pl.DataFrame:
         return (
@@ -514,9 +501,8 @@ def run(config: TrainingPipelineConfig) -> None:
         filter_good: bool,
         do_sample_negatives: bool,
         shuffle_seed: int | None,
+        max_queries: int = 0,
     ) -> pl.DataFrame:
-        LOGGER.info("---- Split %s: start ----", split_name)
-
         # 1) Queries from query_orders (kiosk, anchor)
         queries_all = _build_queries(query_orders)
 
@@ -532,12 +518,36 @@ def run(config: TrainingPipelineConfig) -> None:
         # 3) Keep only queries that have at least one positive
         pos_queries = pos_pairs.select(["kiosk_id", "anchor_product_id"]).unique()
         queries = queries_all.join(pos_queries, on=["kiosk_id", "anchor_product_id"], how="inner")
-        LOGGER.info(
-            "Split %s: queries total=%s -> with positives=%s (filtered=%s)",
-            split_name, queries_all.height, queries.height, queries_all.height - queries.height,
-        )
+        n_total_q = queries_all.height
+        n_pos_q = queries.height
+
+        # 3b) Sample queries if exceeds max_queries (for memory-safe evaluation)
+        sampled = False
+        if max_queries > 0 and queries.height > max_queries:
+            sampled = True
+            queries = queries.sample(n=max_queries, seed=42)
+            # Also trim pos_pairs to sampled queries
+            pos_pairs = pos_pairs.join(
+                queries.select(["kiosk_id", "anchor_product_id"]),
+                on=["kiosk_id", "anchor_product_id"],
+                how="inner",
+            )
+            n_pos_q = queries.height
+
+        # Log concise query funnel
+        if sampled:
+            LOGGER.info(
+                "%s: %s queries → %s sampled",
+                split_name, f"{n_total_q:,}", f"{n_pos_q:,}",
+            )
+        else:
+            LOGGER.info(
+                "%s: %s queries → %s with positives (dropped %s)",
+                split_name, f"{n_total_q:,}", f"{n_pos_q:,}",
+                f"{n_total_q - n_pos_q:,}",
+            )
         if queries.is_empty():
-            LOGGER.info("Split %s: empty after positive-query filtering.", split_name)
+            LOGGER.info("%s: empty after filtering.", split_name)
             return pl.DataFrame(schema={**{c: pl.Utf8 for c in KEY_COLS}, "label": pl.Int8})
 
         # 4) Build candidate feature table for remaining queries
@@ -572,24 +582,60 @@ def run(config: TrainingPipelineConfig) -> None:
             LOGGER.info("Split %s: empty after sampling/shuffling.", split_name)
             return labeled_keys
 
-        # 9) Build features only for selected rows
-        selected_keys = labeled_keys.select(KEY_COLS).unique()
-        slim_ft = base_ft.join(selected_keys, on=KEY_COLS, how="inner")
-        slim_ft = _drop_unwanted(_add_features(slim_ft, feat_orders))
+        # 9) Build features only for selected rows.
+        #    For large datasets, process in query batches to avoid OOM.
+        MAX_ROWS_PER_BATCH = 5_000_000
 
-        out = (
-            slim_ft
-            .join(labeled_keys, on=KEY_COLS, how="left")
-            .with_columns(pl.col("label").fill_null(0).cast(pl.Int8))
-        )
+        # When filtering/sampling happened, only keep selected rows
+        if filter_good or do_sample_negatives:
+            selected_keys = labeled_keys.select(KEY_COLS).unique()
+        else:
+            selected_keys = None  # all rows survive — skip redundant join
 
-        LOGGER.info(
-            "Split %s: done (rows=%s positives=%s ratio=%.4f queries=%s)",
-            split_name, out.height,
-            int(out.select(pl.col("label").sum()).item() or 0),
-            float((out.select(pl.col("label").sum()).item() or 0) / out.height) if out.height else 0.0,
-            out.select(pl.struct(["kiosk_id", "anchor_product_id"]).n_unique()).item(),
-        )
+        total_rows = base_ft.height if selected_keys is None else labeled_keys.height
+
+        if total_rows <= MAX_ROWS_PER_BATCH:
+            # Small enough — single pass
+            slim_ft = base_ft if selected_keys is None else base_ft.join(selected_keys, on=KEY_COLS, how="inner")
+            slim_ft = _add_features(slim_ft, feat_orders)
+            out = (
+                slim_ft
+                .join(labeled_keys, on=KEY_COLS, how="left")
+                .with_columns(pl.col("label").fill_null(0).cast(pl.Int8))
+            )
+            del slim_ft
+        else:
+            # Large dataset — process in query batches
+            unique_queries = (
+                labeled_keys.select(["kiosk_id", "anchor_product_id"]).unique()
+            )
+            n_queries = unique_queries.height
+            avg_group = total_rows / n_queries if n_queries else 1
+            batch_q = max(1000, int(MAX_ROWS_PER_BATCH / avg_group))
+            n_batches = (n_queries + batch_q - 1) // batch_q
+            LOGGER.info(
+                "%s: %s rows — feature batches: %d × ~%d queries",
+                split_name, f"{total_rows:,}", n_batches, batch_q,
+            )
+
+            parts: list[pl.DataFrame] = []
+            for i in range(0, n_queries, batch_q):
+                q_batch = unique_queries.slice(i, min(batch_q, n_queries - i))
+                lk_batch = labeled_keys.join(q_batch, on=["kiosk_id", "anchor_product_id"], how="inner")
+                ft_batch = base_ft.join(lk_batch.select(KEY_COLS), on=KEY_COLS, how="inner")
+                ft_batch = _add_features(ft_batch, feat_orders)
+                out_batch = (
+                    ft_batch
+                    .join(lk_batch, on=KEY_COLS, how="left")
+                    .with_columns(pl.col("label").fill_null(0).cast(pl.Int8))
+                )
+                parts.append(out_batch)
+                del ft_batch, lk_batch, out_batch
+
+            out = pl.concat(parts, how="vertical_relaxed")
+            del parts
+        del base_ft, labeled_keys
+
         return out
 
     labeled_train = _build_labeled_split(
@@ -621,6 +667,7 @@ def run(config: TrainingPipelineConfig) -> None:
         filter_good=False,
         do_sample_negatives=False,
         shuffle_seed=None,
+        max_queries=config.max_eval_queries,
     )
 
     # ---- Detect feature columns ----
@@ -645,10 +692,36 @@ def run(config: TrainingPipelineConfig) -> None:
     labeled_val = fill_missing_features(labeled_val, numeric_feature_cols, categorical_feature_cols)
     labeled_test = fill_missing_features(labeled_test, numeric_feature_cols, categorical_feature_cols)
 
-    log_label_stats("Train", labeled_train)
-    log_label_stats("Val", labeled_val)
-    log_label_stats("Test", labeled_test)
+    def _split_summary_row(name: str, df: pl.DataFrame) -> tuple:
+        if df.height == 0:
+            return (name, 0, 0, 0, 0.0, 0, 0.0)
+        rows, pos, queries = df.select(
+            pl.len(), pl.col("label").sum(),
+            pl.struct(["kiosk_id", "anchor_product_id"]).n_unique(),
+        ).row(0)
+        neg = rows - pos
+        ratio = 100.0 * pos / rows if rows else 0.0
+        avg_g = rows / queries if queries else 0.0
+        return (name, rows, pos, neg, ratio, queries, avg_g)
+
+    summary_rows = [
+        _split_summary_row("Train", labeled_train),
+        _split_summary_row("Val", labeled_val),
+        _split_summary_row("Test", labeled_test),
+    ]
+    hdr = f"{'Split':<7s}  {'Rows':>10s}  {'Pos':>8s}  {'Neg':>10s}  {'Pos%':>6s}  {'Queries':>8s}  {'AvgGrp':>7s}"
+    sep = "-" * len(hdr)
+    lines = [hdr, sep]
+    for name, rows, pos, neg, ratio, queries, avg_g in summary_rows:
+        lines.append(
+            f"{name:<7s}  {rows:>10,d}  {pos:>8,d}  {neg:>10,d}  {ratio:>5.1f}%  {queries:>8,d}  {avg_g:>7.1f}"
+        )
+    LOGGER.info("\nStep 5 summary:\n%s", "\n".join(lines))
     LOGGER.info("Feature columns (%d): %s", len(feature_cols), feature_cols)
+
+    # Restore sub-module loggers
+    for lg, lvl in zip(_step5_loggers, _step5_saved_levels):
+        lg.setLevel(lvl)
 
     # ---- STEP 6: TRAIN LGBM ----
     _banner("STEP 6 — TRAIN LGBM")
@@ -695,6 +768,10 @@ def run(config: TrainingPipelineConfig) -> None:
             lgb.record_evaluation(evals_result),
         ],
     )
+
+    # Free training arrays — no longer needed
+    del X_train, y_train, g_train, X_val, y_val, g_val
+    del train_set, valid_set, labeled_train, labeled_val
 
     if config.eval_log_path:
         config.eval_log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -746,7 +823,12 @@ def run(config: TrainingPipelineConfig) -> None:
         booster, eval_labeled, feature_cols, categorical_feature_cols,
         batch_size=config.predict_batch_size,
     )
-    eval_scored = eval_labeled.with_columns(pl.Series("score", eval_scores))
+    # Keep only columns needed for metrics + score to free memory
+    eval_scored = (
+        eval_labeled.select(["kiosk_id", "anchor_product_id", "candidate_product_id", "label"])
+        .with_columns(pl.Series("score", eval_scores))
+    )
+    del eval_labeled, eval_scores
     eval_scored = shuffle_within_query(eval_scored, seed=99)
 
     n_eval_queries = eval_scored.select(pl.struct(["kiosk_id", "anchor_product_id"]).n_unique()).item()
@@ -754,7 +836,7 @@ def run(config: TrainingPipelineConfig) -> None:
         eval_scored.filter(pl.col("label") == 1)
         .select(pl.struct(["kiosk_id", "anchor_product_id"]).n_unique()).item()
     )
-    log_label_stats("Test", eval_labeled)
+    log_label_stats("Test", eval_scored)
     LOGGER.info(
         "Test queries total: %s, with >=1 positive: %s (%.1f%%)",
         n_eval_queries, n_eval_queries_with_pos,
