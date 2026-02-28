@@ -24,7 +24,7 @@ import polars as pl
 import pandas as pd
 import numpy as np
 
-from training.src.config import load_yaml_config, FeatureConfig
+from training.src.config import load_yaml_config
 from training.src.features import add_all_features, lgbm_feature_exprs
 from training.src.io import (
     load_orders_csv_sample,
@@ -83,7 +83,6 @@ class TrainingPipelineConfig:
     max_neg_per_group: int
     max_eval_queries: int
     eval_ks: list[int]
-    features_config_path: Path | None
     predict_batch_size: int
     lgbm_params: dict
     num_boost_round: int
@@ -118,7 +117,6 @@ class TrainingPipelineConfig:
             max_neg_per_group=int(data.get("max_neg_per_group", 60)),
             max_eval_queries=int(data.get("max_eval_queries", 50_000)),
             eval_ks=[int(k) for k in data.get("eval_ks", [20])],
-            features_config_path=Path(data["features_config_path"]) if data.get("features_config_path") else None,
             predict_batch_size=int(data.get("predict_batch_size", 200_000)),
             lgbm_params=dict(data.get("lgbm_params", {})),
             num_boost_round=int(data.get("num_boost_round", 2000)),
@@ -457,15 +455,9 @@ def run(config: TrainingPipelineConfig) -> None:
     top_k_train = max(1, min(top_k_train, config.top_k))
     topk_candidates_train = _generate_topk(top_k_train)
 
-    feature_config = (
-        FeatureConfig.from_yaml(config.features_config_path)
-        if config.features_config_path and config.features_config_path.exists()
-        else FeatureConfig()
-    )
-
     def _add_features(ft: pl.DataFrame, feat_orders: pl.DataFrame) -> pl.DataFrame:
         return add_all_features(
-            ft, orders=feat_orders, products=products, commerces=commerces, config=feature_config,
+            ft, orders=feat_orders, products=products, commerces=commerces,
         )
 
     # ---- STEP 5: BUILD FEATURES + LABELS ----

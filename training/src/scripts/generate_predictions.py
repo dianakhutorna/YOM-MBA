@@ -21,7 +21,7 @@ import lightgbm as lgb
 import numpy as np
 import polars as pl
 
-from training.src.config import FeatureConfig, load_yaml_config
+from training.src.config import load_yaml_config
 from training.src.features import add_all_features, lgbm_feature_exprs
 from training.src.io import (
     load_orders_parquet,
@@ -91,7 +91,6 @@ def main() -> None:
     products_path = Path(cfg.get("products_path", EXTERNAL_DIR / "products_v2.csv"))
     commerces_path = Path(cfg.get("commerces_path", EXTERNAL_DIR / "commerces.csv"))
     model_path = Path(cfg.get("model_path", MODELS_DIR / "lgbm_ranker.txt"))
-    features_config_path = cfg.get("features_config_path", "")
     predictions_path = Path(cfg.get("predictions_path", INTERIM_DIR / "predictions.parquet"))
     popularity_path = Path(cfg.get("popularity_path", INTERIM_DIR / "popularity_fallback.parquet"))
 
@@ -191,13 +190,8 @@ def main() -> None:
         baskets=baskets_train, topk_candidates=topk_candidates, queries=queries,
     )
 
-    feature_config = (
-        FeatureConfig.from_yaml(Path(features_config_path))
-        if features_config_path
-        else FeatureConfig()
-    )
     feature_table = add_all_features(
-        feature_table, orders=train_orders, products=products, commerces=commerces, config=feature_config,
+        feature_table, orders=train_orders, products=products, commerces=commerces,
     )
 
     # ---- align columns to model expectations ----

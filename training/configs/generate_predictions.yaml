@@ -2,7 +2,6 @@ orders_path: training/data/interim/orders_sample.parquet
 products_path: training/data/external/products_v2.csv
 commerces_path: training/data/external/commerces.csv
 model_path: training/models/lgbm_ranker.txt
-features_config_path: training/configs/features.yaml
 
 predictions_path: training/data/interim/predictions.parquet
 popularity_path: training/data/interim/popularity_fallback.parquet
