@@ -17,23 +17,26 @@ app = FastAPI(title="Bundle Service", version="1.0")
 
 _preds: pl.DataFrame | None = None
 _fallback: pl.DataFrame | None = None
+_cat_fallback: pl.DataFrame | None = None
+_global_fallback: pl.DataFrame | None = None
 _products: pl.DataFrame | None = None
 
 
 def _load_assets(config_path: Path) -> None:
-    global _preds, _fallback, _products
+    global _preds, _fallback, _cat_fallback, _global_fallback, _products
     cfg = load_yaml_config(config_path) if config_path else {}
 
     predictions_path = Path(cfg.get("predictions_path", INTERIM_DIR / "predictions.parquet"))
     popularity_path = Path(cfg.get("popularity_path", INTERIM_DIR / "popularity_fallback.parquet"))
+    category_fallback_path = Path(cfg.get("category_fallback_path", INTERIM_DIR / "category_fallback.parquet"))
+    global_fallback_path = Path(cfg.get("global_fallback_path", INTERIM_DIR / "global_fallback.parquet"))
     products_path = Path(cfg.get("products_path", EXTERNAL_DIR / "products_v2.csv"))
 
     _preds = load_parquet(predictions_path, label="Predictions parquet")
-    _fallback = load_parquet(popularity_path, label="Popularity fallback")
-    if "category" not in _preds.columns:
-        _products = load_products_csv(products_path)
-    else:
-        _products = None
+    _fallback = load_parquet(popularity_path, label="Anchor fallback")
+    _cat_fallback = load_parquet(category_fallback_path, label="Category fallback") if category_fallback_path.exists() else None
+    _global_fallback = load_parquet(global_fallback_path, label="Global fallback") if global_fallback_path.exists() else None
+    _products = load_products_csv(products_path)
 
 
 @app.on_event("startup")
@@ -68,6 +71,8 @@ def get_bundle(
         n_group_key=n_group_key,
         n_min=max(1, n_min),
         n_max=max(n_min, n_max),
+        category_fallback=_cat_fallback,
+        global_fallback=_global_fallback,
     )
 
     return {

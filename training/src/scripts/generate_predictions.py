@@ -1,15 +1,11 @@
-"""
-Batch scoring: load a trained model and generate a precomputed
-predictions.parquet + popularity fallback for the serving layer.
+"""Batch scoring → precomputed predictions.parquet + popularity fallback.
 
-This script is designed to run on **more data** than training used.
+Designed to run on **more data** than training used.
 The model learns co-purchase patterns from a representative sample;
-at inference we want to cover as many active kiosks as possible,
-using the freshest available order history.
+at inference we want to cover as many active kiosks as possible.
 
 Typical cadence: daily or weekly.
 """
-
 from __future__ import annotations
 
 import argparse
@@ -35,7 +31,6 @@ from training.src.steps.build_baskets import build_baskets
 from training.src.steps.build_feature_table import build_feature_table
 from training.src.steps.generate_candidates import generate_candidates
 from training.src.steps.select_top_k_candidates import select_top_k_candidates
-from training.src.steps.split_orders import split_orders_by_time
 
 
 LOGGER = logging.getLogger(__name__)
@@ -95,12 +90,7 @@ def main() -> None:
     popularity_path = Path(cfg.get("popularity_path", INTERIM_DIR / "popularity_fallback.parquet"))
 
     # ---- data selection ----
-    # Use inference_last_n_days > 0 to select a recent window.
-    # Use inference_max_rows = 0 (unlimited) to cover all active kiosks.
-    train_ratio = float(cfg.get("train_ratio", 0.7))
-    val_ratio = float(cfg.get("val_ratio", 0.1))
-    test_ratio = float(cfg.get("test_ratio", 0.2))
-    inference_last_n_days = int(cfg.get("inference_last_n_days", 0))
+    inference_last_n_days = int(cfg.get("inference_last_n_days", 30))
     inference_max_rows = int(cfg.get("inference_max_rows", 0))
     query_sample_n = int(cfg.get("query_sample_n", 0))
 
@@ -110,7 +100,6 @@ def main() -> None:
     top_k_candidates = int(cfg.get("top_k_candidates", 250))
     catalog_top_k = int(cfg.get("catalog_top_k", 100))
     predict_batch_size = int(cfg.get("predict_batch_size", 200_000))
-    normalize_popularity = bool(cfg.get("normalize_popularity", True))
 
     # ---- load data ----
     orders = load_orders_parquet(orders_path)
@@ -118,6 +107,7 @@ def main() -> None:
     commerces = load_commerces_csv(commerces_path)
 
     # Filter to active kiosks
+    n_total_active_kiosks: int = 0
     if "active" in commerces.columns:
         active_kiosks = (
             commerces
@@ -126,6 +116,7 @@ def main() -> None:
             .drop_nulls()
             .unique()
         )
+        n_total_active_kiosks = active_kiosks.height
         orders_before = orders.height
         kiosks_before = orders.select(pl.col("kiosk_id").n_unique()).item()
         orders = orders.join(active_kiosks, on="kiosk_id", how="inner")
@@ -133,24 +124,19 @@ def main() -> None:
         orders_after = orders.height
         kiosks_after = orders.select(pl.col("kiosk_id").n_unique()).item() if orders_after > 0 else 0
         LOGGER.info(
-            "Filtered to active kiosks: rows %s -> %s, kiosks %s -> %s",
-            orders_before, orders_after, kiosks_before, kiosks_after,
+            "Filtered to active kiosks: rows %s -> %s, kiosks %s -> %s (total active: %s)",
+            orders_before, orders_after, kiosks_before, kiosks_after, n_total_active_kiosks,
         )
     else:
         LOGGER.warning("Column 'active' not found in commerces; skipping active kiosk filter.")
 
     # ---- select inference window ----
-    if inference_last_n_days and "order_dt" in orders.columns:
-        max_dt = orders.select(pl.col("order_dt").max()).item()
-        if max_dt is not None:
-            cutoff = max_dt - pl.duration(days=inference_last_n_days)
-            train_orders = orders.filter(pl.col("order_dt") >= cutoff)
-        else:
-            train_orders = orders
+    max_dt = orders.select(pl.col("order_dt").max()).item()
+    if max_dt is not None and inference_last_n_days > 0:
+        cutoff = max_dt - pl.duration(days=inference_last_n_days)
+        train_orders = orders.filter(pl.col("order_dt") >= cutoff)
     else:
-        train_orders, _, _ = split_orders_by_time(
-            orders, train_ratio=train_ratio, val_ratio=val_ratio, test_ratio=test_ratio,
-        )
+        train_orders = orders
 
     if inference_max_rows and train_orders.height > inference_max_rows:
         train_orders = train_orders.tail(inference_max_rows)
@@ -219,83 +205,215 @@ def main() -> None:
         if zero_only:
             LOGGER.warning("Zero-only features in inference (%s): %s", len(zero_only), zero_only[:10])
 
+    # ---- product name / category lookup ----
+    prod_info = (
+        products
+        .select([
+            pl.col("productid").cast(pl.Utf8).alias("product_id"),
+            pl.col("name").cast(pl.Utf8).alias("product_name"),
+            pl.col("category").cast(pl.Utf8),
+        ])
+        .unique(subset=["product_id"])
+    )
+
     # ---- predict ----
     scores = _predict_scores_batched(
         ranker, feature_table, model_feature_cols, categorical_feature_cols, predict_batch_size,
     )
     scored = feature_table.with_columns(pl.Series("score", scores))
 
-    # Attach category from products
-    prod_map = products.select(
-        [
-            pl.col("productid").cast(pl.Utf8).alias("candidate_product_id"),
-            pl.col("category").cast(pl.Utf8),
-        ]
-    ).unique(subset=["candidate_product_id"])
-    scored = scored.join(prod_map, on="candidate_product_id", how="left")
-
     score_range = scored.select(
         pl.col("score").min().alias("min"),
         pl.col("score").max().alias("max"),
         pl.col("score").mean().alias("mean"),
     ).row(0)
-    LOGGER.info("Score stats: min=%.6f max=%.6f mean=%.6f", score_range[0], score_range[1], score_range[2])
+    LOGGER.info("Score stats: min=%.6f max=%.6f mean=%.6f", *score_range)
 
-    # Check score spread per query
-    score_spread = (
-        scored.group_by(["kiosk_id", "anchor_product_id"])
-        .agg(pl.col("score").std().alias("score_std"))
-    )
-    zero_std = score_spread.filter(
-        (pl.col("score_std") == 0) | (pl.col("score_std").is_null())
-    ).height
-    if score_spread.height > 0:
-        LOGGER.info(
-            "Queries with zero score spread: %s/%s (%.2f%%)",
-            zero_std, score_spread.height, 100.0 * zero_std / score_spread.height,
-        )
-
-    # ---- save predictions ----
+    # ---- save predictions catalog ----
     final = (
         scored
         .sort(["kiosk_id", "anchor_product_id", "score"], descending=[False, False, True])
         .group_by(["kiosk_id", "anchor_product_id"])
         .head(catalog_top_k)
-        .select(["kiosk_id", "anchor_product_id", "candidate_product_id", "category", "score"])
+        .select(["kiosk_id", "anchor_product_id", "candidate_product_id", "score"])
     )
-    save_parquet(final, predictions_path)
-    LOGGER.info("Saved predictions to %s", predictions_path)
 
-    # ---- popularity fallback ----
-    popularity = (
+    # Attach candidate name + category
+    final = final.join(
+        prod_info.rename({"product_id": "candidate_product_id",
+                          "product_name": "candidate_name"}),
+        on="candidate_product_id", how="left",
+    )
+    # Attach anchor name
+    final = final.join(
+        prod_info.select([
+            pl.col("product_id").alias("anchor_product_id"),
+            pl.col("product_name").alias("anchor_name"),
+        ]),
+        on="anchor_product_id", how="left",
+    )
+
+    final = final.select([
+        "kiosk_id",
+        "anchor_product_id", "anchor_name",
+        "candidate_product_id", "candidate_name", "category",
+        "score",
+    ])
+
+    save_parquet(final, predictions_path)
+
+    # ---- coverage report ----
+    catalog_kiosks = final.select(pl.col("kiosk_id").n_unique()).item()
+    catalog_queries = final.select(
+        pl.struct(["kiosk_id", "anchor_product_id"]).n_unique()
+    ).item()
+    total_active = n_total_active_kiosks if n_total_active_kiosks > 0 else catalog_kiosks
+    coverage_pct = 100.0 * catalog_kiosks / total_active if total_active > 0 else 0.0
+
+    LOGGER.info(
+        "Catalog saved: %s rows | %s queries | %s kiosks | coverage %.1f%% (%s/%s active) | %s",
+        f"{final.height:,}", f"{catalog_queries:,}", f"{catalog_kiosks:,}",
+        coverage_pct, catalog_kiosks, total_active,
+        predictions_path,
+    )
+
+    # ---- per-anchor co-purchase fallback ----
+    # For kiosks not in the catalog we still know the anchor, so we provide
+    # anchor-specific recommendations based on MBA co-occurrence (top-K by
+    # cosine similarity).  This is much better than a flat global popularity list.
+    anchor_fallback = (
+        topk_candidates
+        .sort(["anchor_product_id", "cooc_cosine_sim"], descending=[False, True])
+        .group_by("anchor_product_id")
+        .head(catalog_top_k)
+    )
+    # Normalize cosine similarity to model score range so serve_bundle can
+    # compare with model scores seamlessly.
+    score_min, score_max = float(score_range[0]), float(score_range[1])
+
+    sim_min = anchor_fallback.select(pl.col("cooc_cosine_sim").min()).item()
+    sim_max = anchor_fallback.select(pl.col("cooc_cosine_sim").max()).item()
+    if sim_min is None or sim_max is None or sim_min == sim_max:
+        anchor_fallback = anchor_fallback.with_columns(pl.lit(score_min).alias("score"))
+    else:
+        anchor_fallback = anchor_fallback.with_columns(
+            ((pl.col("cooc_cosine_sim") - sim_min) / (sim_max - sim_min)
+             * (score_max - score_min) + score_min).alias("score")
+        )
+
+    # Add product names
+    anchor_fallback = (
+        anchor_fallback
+        .join(
+            prod_info.rename({"product_id": "candidate_product_id",
+                              "product_name": "candidate_name"}),
+            on="candidate_product_id", how="left",
+        )
+        .join(
+            prod_info.select([
+                pl.col("product_id").alias("anchor_product_id"),
+                pl.col("product_name").alias("anchor_name"),
+            ]),
+            on="anchor_product_id", how="left",
+        )
+        .select([
+            "anchor_product_id", "anchor_name",
+            "candidate_product_id", "candidate_name", "category",
+            "score",
+        ])
+    )
+
+    save_parquet(anchor_fallback, popularity_path)
+    n_fb_anchors = anchor_fallback.select(pl.col("anchor_product_id").n_unique()).item()
+    LOGGER.info(
+        "Saved per-anchor fallback: %s rows | %s anchors | top-%s per anchor | %s",
+        f"{anchor_fallback.height:,}", n_fb_anchors, catalog_top_k, popularity_path,
+    )
+
+    # ---- per-category popularity fallback ----
+    # If anchor is unknown, we recommend popular items from the anchor's category.
+    category_fallback_path = Path(
+        cfg.get("category_fallback_path", INTERIM_DIR / "category_fallback.parquet")
+    )
+    cat_pop = (
+        train_orders
+        .join(
+            prod_info.select([pl.col("product_id"), pl.col("category")]),
+            on="product_id", how="left",
+        )
+        .filter(pl.col("category").is_not_null())
+        .group_by(["category", "product_id"])
+        .agg(pl.len().alias("purchase_count"))
+        .sort(["category", "purchase_count"], descending=[False, True])
+        .group_by("category")
+        .head(catalog_top_k)
+    )
+    # Normalize scores to model range
+    cat_pop = cat_pop.with_columns(pl.col("purchase_count").cast(pl.Float64).log1p().alias("_pop"))
+    cpop_min = cat_pop.select(pl.col("_pop").min()).item()
+    cpop_max = cat_pop.select(pl.col("_pop").max()).item()
+    if cpop_min is None or cpop_max is None or cpop_min == cpop_max:
+        cat_pop = cat_pop.with_columns(pl.lit(score_min).alias("score"))
+    else:
+        cat_pop = cat_pop.with_columns(
+            ((pl.col("_pop") - cpop_min) / (cpop_max - cpop_min)
+             * (score_max - score_min) + score_min).alias("score")
+        )
+    cat_pop = (
+        cat_pop
+        .drop(["_pop", "purchase_count"])
+        .rename({"product_id": "candidate_product_id"})
+        .join(
+            prod_info.rename({"product_id": "candidate_product_id",
+                              "product_name": "candidate_name"})
+            .select(["candidate_product_id", "candidate_name"]),
+            on="candidate_product_id", how="left",
+        )
+        .select(["category", "candidate_product_id", "candidate_name", "score"])
+    )
+    save_parquet(cat_pop, category_fallback_path)
+    n_cats = cat_pop.select(pl.col("category").n_unique()).item()
+    LOGGER.info(
+        "Saved category fallback: %s rows | %s categories | top-%s per category | %s",
+        f"{cat_pop.height:,}", n_cats, catalog_top_k, category_fallback_path,
+    )
+
+    # ---- global popularity fallback ----
+    # Absolute last resort: top-N most purchased products overall.
+    global_fallback_path = Path(
+        cfg.get("global_fallback_path", INTERIM_DIR / "global_fallback.parquet")
+    )
+    global_pop = (
         train_orders
         .group_by("product_id")
         .agg(pl.len().alias("purchase_count"))
         .sort("purchase_count", descending=True)
         .head(catalog_top_k)
-        .select(["product_id", "purchase_count"])
         .rename({"product_id": "candidate_product_id"})
-        .join(prod_map, on="candidate_product_id", how="left")
     )
-    if normalize_popularity:
-        pop = popularity.with_columns(pl.col("purchase_count").cast(pl.Float64).log1p().alias("_pop"))
-        pop_min = pop.select(pl.col("_pop").min()).item()
-        pop_max = pop.select(pl.col("_pop").max()).item()
-        score_min, score_max = float(score_range[0]), float(score_range[1])
-        if pop_min is None or pop_max is None or pop_min == pop_max:
-            pop = pop.with_columns(pl.lit(score_min).alias("score"))
-        else:
-            pop = pop.with_columns(
-                ((pl.col("_pop") - pop_min) / (pop_max - pop_min) * (score_max - score_min) + score_min).alias("score")
-            )
-        popularity = pop.drop("_pop")
-        LOGGER.info("Popularity fallback normalized to model score range.")
+    gpop_min = global_pop.select(pl.col("purchase_count").cast(pl.Float64).log1p().min()).item()
+    gpop_max = global_pop.select(pl.col("purchase_count").cast(pl.Float64).log1p().max()).item()
+    if gpop_min is None or gpop_max is None or gpop_min == gpop_max:
+        global_pop = global_pop.with_columns(pl.lit(score_min).alias("score"))
     else:
-        popularity = popularity.with_columns(pl.col("purchase_count").cast(pl.Float64).alias("score"))
-
-    popularity = popularity.select(["candidate_product_id", "category", "score"])
-    save_parquet(popularity, popularity_path)
-    LOGGER.info("Saved cold-start popularity fallback to %s", popularity_path)
+        global_pop = global_pop.with_columns(
+            ((pl.col("purchase_count").cast(pl.Float64).log1p() - gpop_min) / (gpop_max - gpop_min)
+             * (score_max - score_min) + score_min).alias("score")
+        )
+    global_pop = (
+        global_pop
+        .drop("purchase_count")
+        .join(
+            prod_info.rename({"product_id": "candidate_product_id",
+                              "product_name": "candidate_name"}),
+            on="candidate_product_id", how="left",
+        )
+        .select(["candidate_product_id", "candidate_name", "category", "score"])
+    )
+    save_parquet(global_pop, global_fallback_path)
+    LOGGER.info(
+        "Saved global fallback: %s items | %s", global_pop.height, global_fallback_path,
+    )
 
 
 if __name__ == "__main__":

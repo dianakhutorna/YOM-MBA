@@ -110,7 +110,7 @@ def apply_bundle_rules(
                     right_on="product_id",
                     how="left",
                 )
-            df = pl.concat([add_rows, df], how="vertical").sort("score", descending=True)
+            df = pl.concat([add_rows, df], how="diagonal").sort("score", descending=True)
 
     df = df.head(n_max)
     if df.height < n_min:
@@ -119,9 +119,9 @@ def apply_bundle_rules(
     return df
 
 
-def _fill_with_popularity(
+def _fill_from_fallback(
     df: pl.DataFrame,
-    fallback: pl.DataFrame,
+    fallback_rows: pl.DataFrame,
     *,
     kiosk_id: str,
     anchor_product_id: str,
@@ -129,58 +129,91 @@ def _fill_with_popularity(
     allowed_categories: list[str],
     n_max: int,
 ) -> pl.DataFrame:
-    if fallback.is_empty():
+    """Append items from *fallback_rows* to *df* until it reaches *n_max*.
+
+    Deduplicates against items already in *df* and applies exclusion /
+    category filters.  Scores are set below the current minimum so that
+    fallback items always appear after model-scored items.
+    """
+    if fallback_rows.is_empty():
         return df
 
-    fallback_df = fallback.with_columns(
-        [
-            pl.lit(kiosk_id).alias("kiosk_id"),
-            pl.lit(anchor_product_id).alias("anchor_product_id"),
-        ]
+    fb = fallback_rows.with_columns(
+        pl.lit(kiosk_id).alias("kiosk_id"),
+        pl.lit(anchor_product_id).alias("anchor_product_id"),
     )
+
+    # Assign scores below the current lowest so order is preserved
     if df.height > 0:
-        min_score = df.select(pl.min("score")).item()
-        if min_score is None:
-            min_score = 0.0
-        fallback_df = fallback_df.with_columns(pl.lit(min_score - 1.0).alias("score"))
-    else:
-        # No model scores; use rank-based small negative scores to keep scale reasonable
-        fallback_df = fallback_df.with_columns(
-            (-pl.arange(0, pl.len()).cast(pl.Float64)).alias("score")
+        min_score = df.select(pl.min("score")).item() or 0.0
+        fb = fb.with_columns(
+            (pl.lit(min_score) - 1.0 - pl.arange(0, pl.len()).cast(pl.Float64) * 0.001).alias("score")
         )
-    if "category" not in fallback_df.columns:
-        fallback_df = fallback_df.with_columns(pl.lit(None).cast(pl.Utf8).alias("category"))
+    else:
+        fb = fb.with_columns((-pl.arange(0, pl.len()).cast(pl.Float64)).alias("score"))
 
+    if "category" not in fb.columns:
+        fb = fb.with_columns(pl.lit(None).cast(pl.Utf8).alias("category"))
+
+    # Dedup + exclusions
     seen = set(df.select("candidate_product_id").to_series().to_list())
-    fallback_df = fallback_df.filter(~pl.col("candidate_product_id").is_in(list(seen)))
-    fallback_df = fallback_df.filter(pl.col("candidate_product_id") != anchor_product_id)
+    fb = fb.filter(~pl.col("candidate_product_id").is_in(list(seen)))
+    fb = fb.filter(pl.col("candidate_product_id") != anchor_product_id)
     if excluded_products:
-        fallback_df = fallback_df.filter(~pl.col("candidate_product_id").is_in(excluded_products))
-
-    if allowed_categories and "category" in fallback_df.columns:
-        filtered = fallback_df.filter(pl.col("category").is_in(allowed_categories))
-        if filtered.height == 0:
-            LOGGER.warning("Popularity fallback has no items in allowed_categories; using unfiltered fallback.")
-        else:
-            fallback_df = filtered
+        fb = fb.filter(~pl.col("candidate_product_id").is_in(excluded_products))
+    if allowed_categories and "category" in fb.columns:
+        fb = fb.filter(pl.col("category").is_in(allowed_categories))
 
     need = max(0, n_max - df.height)
     if need == 0:
         return df
-    fallback_df = fallback_df.sort("score", descending=True).head(need)
-    # Align schemas before concat
-    if df.height > 0:
-        base_cols = df.columns
-    else:
-        base_cols = ["kiosk_id", "anchor_product_id", "candidate_product_id", "category", "score"]
+    fb = fb.sort("score", descending=True).head(need)
+
+    # Align schemas
+    base_cols = df.columns if df.height > 0 else [
+        "kiosk_id", "anchor_product_id", "candidate_product_id", "category", "score",
+    ]
     for col in base_cols:
-        if col not in fallback_df.columns:
-            fallback_df = fallback_df.with_columns(pl.lit(None).alias(col))
-    fallback_df = fallback_df.select(base_cols)
+        if col not in fb.columns:
+            fb = fb.with_columns(pl.lit(None).alias(col))
+    fb = fb.select(base_cols)
     if df.height > 0:
         df = df.select(base_cols)
-    out = pl.concat([df, fallback_df], how="vertical").sort("score", descending=True)
-    return out
+    return pl.concat([df, fb], how="vertical").sort("score", descending=True)
+
+
+def _get_anchor_fallback(
+    fallback: pl.DataFrame, anchor_product_id: str,
+) -> pl.DataFrame:
+    """Filter per-anchor fallback; return empty DataFrame if anchor unknown."""
+    if "anchor_product_id" in fallback.columns:
+        return fallback.filter(pl.col("anchor_product_id") == anchor_product_id)
+    return fallback
+
+
+def _get_category_fallback(
+    cat_fallback: pl.DataFrame | None,
+    products: pl.DataFrame | None,
+    anchor_product_id: str,
+) -> pl.DataFrame:
+    """Get category-level popular items matching the anchor's category."""
+    empty = pl.DataFrame(schema={"candidate_product_id": pl.Utf8, "category": pl.Utf8, "score": pl.Float64})
+    if cat_fallback is None or cat_fallback.is_empty():
+        return empty
+
+    # Look up anchor's category from products table
+    anchor_category: str | None = None
+    if products is not None and "category" in products.columns:
+        row = products.filter(
+            pl.col("productid").cast(pl.Utf8) == anchor_product_id
+        ).select("category").head(1)
+        if row.height > 0:
+            anchor_category = row.item()
+
+    if anchor_category is None:
+        return empty
+
+    return cat_fallback.filter(pl.col("category") == anchor_category)
 
 
 def build_bundle(
@@ -196,18 +229,32 @@ def build_bundle(
     n_group_key: int | None,
     n_min: int,
     n_max: int,
+    category_fallback: pl.DataFrame | None = None,
+    global_fallback: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
-    if "category" not in fallback.columns:
-        fallback = fallback.with_columns(pl.lit(None).cast(pl.Utf8).alias("category"))
+    """Build a bundle with multi-level fallback.
+
+    Priority:
+      1. LightGBM predictions (personalized)
+      2. Per-anchor MBA co-purchase fallback
+      3. Per-category popularity fallback
+      4. Global popularity fallback
+    """
+    anchor_fb = _get_anchor_fallback(fallback, anchor_product_id)
+    if "category" not in anchor_fb.columns:
+        anchor_fb = anchor_fb.with_columns(pl.lit(None).cast(pl.Utf8).alias("category"))
+
+    # --- Level 1: model predictions ---
     df_scored = preds.filter(
         (pl.col("kiosk_id") == kiosk_id) &
         (pl.col("anchor_product_id") == anchor_product_id)
     )
 
+    # --- Level 2: per-anchor MBA fallback ---
     if df_scored.is_empty():
-        LOGGER.warning("No predictions for kiosk+anchor. Using popularity fallback.")
+        LOGGER.info("No predictions for kiosk+anchor. Trying per-anchor fallback.")
         df_scored = (
-            fallback
+            anchor_fb
             .with_columns(
                 pl.lit(kiosk_id).alias("kiosk_id"),
                 pl.lit(anchor_product_id).alias("anchor_product_id"),
@@ -228,29 +275,60 @@ def build_bundle(
         n_max=n_max,
     )
 
-    if final.height < n_min:
-        final = _fill_with_popularity(
-            final,
-            fallback,
-            kiosk_id=kiosk_id,
-            anchor_product_id=anchor_product_id,
-            excluded_products=excluded_products,
-            allowed_categories=allowed_categories,
+    # --- Level 2b: fill from anchor fallback if not enough ---
+    if final.height < n_max:
+        final = _fill_from_fallback(
+            final, anchor_fb,
+            kiosk_id=kiosk_id, anchor_product_id=anchor_product_id,
+            excluded_products=excluded_products, allowed_categories=allowed_categories,
             n_max=n_max,
         )
-    if final.height == 0:
-        LOGGER.warning("Bundle is empty after fallback; returning raw popularity fallback.")
-        final = (
-            fallback
-            .with_columns(
-                [
-                    pl.lit(kiosk_id).alias("kiosk_id"),
-                    pl.lit(anchor_product_id).alias("anchor_product_id"),
-                ]
+
+    # --- Level 3: per-category popularity fallback ---
+    if final.height < n_max and category_fallback is not None:
+        cat_fb = _get_category_fallback(category_fallback, products, anchor_product_id)
+        if not cat_fb.is_empty():
+            LOGGER.info("Filling from category fallback (%s items available).", cat_fb.height)
+            final = _fill_from_fallback(
+                final, cat_fb,
+                kiosk_id=kiosk_id, anchor_product_id=anchor_product_id,
+                excluded_products=excluded_products, allowed_categories=allowed_categories,
+                n_max=n_max,
             )
-            .select(["kiosk_id", "anchor_product_id", "candidate_product_id", "category", "score"])
-            .head(n_max)
+
+    # --- Level 4: global popularity fallback ---
+    if final.height < n_max and global_fallback is not None:
+        LOGGER.info("Filling from global fallback.")
+        final = _fill_from_fallback(
+            final, global_fallback,
+            kiosk_id=kiosk_id, anchor_product_id=anchor_product_id,
+            excluded_products=excluded_products, allowed_categories=allowed_categories,
+            n_max=n_max,
         )
+
+    # --- Final pass: enforce n_group_key across all sources ---
+    if n_group_key is not None and n_group_key > 0 and final.height > 0:
+        if "category" not in final.columns and products is not None:
+            prod_map = products.select(
+                pl.col("productid").cast(pl.Utf8).alias("product_id"),
+                pl.col("category").cast(pl.Utf8),
+            )
+            final = final.join(prod_map, left_on="candidate_product_id", right_on="product_id", how="left")
+        if "category" in final.columns:
+            final = (
+                final
+                .sort("score", descending=True)
+                .with_columns(
+                    pl.col("category").cum_count().over("category").alias("_cat_rank")
+                )
+                .filter(pl.col("_cat_rank") <= n_group_key)
+                .drop("_cat_rank")
+                .head(n_max)
+            )
+
+    if final.height == 0:
+        LOGGER.warning("Bundle is empty after all fallbacks.")
+
     return final
 
 
@@ -286,19 +364,18 @@ def main() -> None:
 
     predictions_path = Path(cfg.get("predictions_path", INTERIM_DIR / "predictions.parquet"))
     popularity_path = Path(cfg.get("popularity_path", INTERIM_DIR / "popularity_fallback.parquet"))
+    category_fallback_path = Path(cfg.get("category_fallback_path", INTERIM_DIR / "category_fallback.parquet"))
+    global_fallback_path = Path(cfg.get("global_fallback_path", INTERIM_DIR / "global_fallback.parquet"))
     products_path = Path(cfg.get("products_path", EXTERNAL_DIR / "products_v2.csv"))
 
     preds = load_parquet(predictions_path, label="Predictions parquet")
-    fallback = load_parquet(popularity_path, label="Popularity fallback")
-    products = None
-    need_products = (
-        "category" not in preds.columns or
-        (included_products and "category" not in preds.columns) or
-        (allowed_categories and "category" not in preds.columns) or
-        (n_group_key and "category" not in preds.columns)
-    )
-    if need_products:
-        products = load_products_csv(products_path)
+    fallback = load_parquet(popularity_path, label="Anchor fallback")
+
+    # Always load products for category fallback lookup
+    products = load_products_csv(products_path)
+
+    cat_fb = load_parquet(category_fallback_path, label="Category fallback") if category_fallback_path.exists() else None
+    glob_fb = load_parquet(global_fallback_path, label="Global fallback") if global_fallback_path.exists() else None
 
     final = build_bundle(
         preds,
@@ -312,6 +389,8 @@ def main() -> None:
         n_group_key=n_group_key,
         n_min=n_min,
         n_max=n_max,
+        category_fallback=cat_fb,
+        global_fallback=glob_fb,
     )
 
     print(

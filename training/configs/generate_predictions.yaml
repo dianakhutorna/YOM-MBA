@@ -5,22 +5,18 @@ model_path: training/models/lgbm_ranker.txt
 
 predictions_path: training/data/interim/predictions.parquet
 popularity_path: training/data/interim/popularity_fallback.parquet
+category_fallback_path: training/data/interim/category_fallback.parquet
+global_fallback_path: training/data/interim/global_fallback.parquet
 
 # Data selection for inference.
-# Use inference_last_n_days to set recency window (0 = disable).
-# Use inference_max_rows = 0 for unlimited (cover all kiosks).
-# Training on a small sample is fine; inference should use MORE data
-# to maximize kiosk coverage.
-train_ratio: 0.7
-val_ratio: 0.1
-test_ratio: 0.2
-inference_last_n_days: 30
+# inference_last_n_days: recency window for co-purchase patterns.
+# inference_max_rows: 0 = unlimited (cover all kiosks).
+inference_last_n_days: 90
 inference_max_rows: 0  # 0 = unlimited — use all data from the time window
 
 min_cooc: 2
 min_lift: 1.2
 top_k_candidates: 50
-catalog_top_k: 100
+catalog_top_k: 20          # top-N candidates per (kiosk, anchor) in the catalog
 predict_batch_size: 200000
-normalize_popularity: true
 query_sample_n: 0

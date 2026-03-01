@@ -1,14 +1,14 @@
 raw_paths:
   - training/data/raw/2024-20250000_part_00-003.csv
-n_rows: 1000000
+n_rows: 4000000
 sample_position: tail
 interim_path: training/data/interim/orders_sample.parquet
 products_path: training/data/external/products_v2.csv
 commerces_path: training/data/external/commerces.csv
 model_path: training/models/lgbm_ranker.txt
-train_ratio: 0.6
-val_ratio: 0.2
-test_ratio: 0.2
+train_ratio: 0.8
+val_ratio: 0.1
+test_ratio: 0.1
 train_label_ratio: 0.3   # last 30% of training period used for labels (prevents feature/label leakage)
 min_cooc: 2
 min_lift: 1.2
