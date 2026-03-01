@@ -9,4 +9,6 @@ n_min: 4
 n_max: 10
 predictions_path: training/data/interim/predictions.parquet
 popularity_path: training/data/interim/popularity_fallback.parquet
+category_fallback_path: training/data/interim/category_fallback.parquet
+global_fallback_path: training/data/interim/global_fallback.parquet
 products_path: training/data/external/products_v2.csv

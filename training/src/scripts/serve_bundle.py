@@ -245,10 +245,13 @@ def build_bundle(
         anchor_fb = anchor_fb.with_columns(pl.lit(None).cast(pl.Utf8).alias("category"))
 
     # --- Level 1: model predictions ---
-    df_scored = preds.filter(
-        (pl.col("kiosk_id") == kiosk_id) &
-        (pl.col("anchor_product_id") == anchor_product_id)
-    )
+    if preds.height > 0 and "kiosk_id" in preds.columns:
+        df_scored = preds.filter(
+            (pl.col("kiosk_id") == kiosk_id) &
+            (pl.col("anchor_product_id") == anchor_product_id)
+        )
+    else:
+        df_scored = preds  # already filtered or empty
 
     # --- Level 2: per-anchor MBA fallback ---
     if df_scored.is_empty():
