@@ -374,8 +374,25 @@ def main() -> None:
     preds = load_parquet(predictions_path, label="Predictions parquet")
     fallback = load_parquet(popularity_path, label="Anchor fallback")
 
-    # Always load products for category fallback lookup
+    # Always load products for category fallback lookup (blocked products are filtered out)
     products = load_products_csv(products_path)
+
+    # Exclude blocked products from pre-computed predictions and fallback
+    active_product_ids = set(
+        products.select(pl.col("productid").cast(pl.Utf8)).to_series().to_list()
+    )
+    if active_product_ids:
+        for col in ("anchor_product_id", "candidate_product_id"):
+            if col in preds.columns:
+                preds = preds.filter(pl.col(col).is_in(active_product_ids))
+        if "candidate_product_id" in fallback.columns:
+            fallback = fallback.filter(
+                pl.col("candidate_product_id").is_in(active_product_ids)
+            )
+        LOGGER.info(
+            "After blocked-product filter: preds=%s rows, fallback=%s rows",
+            preds.height, fallback.height,
+        )
 
     cat_fb = load_parquet(category_fallback_path, label="Category fallback") if category_fallback_path.exists() else None
     glob_fb = load_parquet(global_fallback_path, label="Global fallback") if global_fallback_path.exists() else None

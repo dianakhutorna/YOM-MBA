@@ -90,12 +90,28 @@ def load_orders_parquet(path: Path) -> pl.DataFrame:
     return load_parquet(path, label="Orders parquet")
 
 
-def load_products_csv(path: Path, separator: str = ";") -> pl.DataFrame:
+def load_products_csv(
+    path: Path,
+    separator: str = ";",
+    filter_blocked: bool = True,
+) -> pl.DataFrame:
     if not path.exists():
         raise FileNotFoundError(f"Products file not found: {path}")
     t0 = time.perf_counter()
     df = pl.read_csv(path, separator=separator)
     LOGGER.info("Products loaded in %.2fs: path=%s rows=%s cols=%s", time.perf_counter() - t0, path, df.height, df.width)
+
+    if filter_blocked and "blocked" in df.columns:
+        rows_before = df.height
+        df = df.filter(
+            ~pl.col("blocked").cast(pl.Utf8).str.to_lowercase().eq("true")
+        )
+        removed = rows_before - df.height
+        LOGGER.info(
+            "Blocked products filtered: %s removed, %s remaining",
+            removed, df.height,
+        )
+
     return df
 
 

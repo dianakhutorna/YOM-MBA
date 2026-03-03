@@ -319,6 +319,22 @@ def log_candidate_recall(
     LOGGER.info("Candidate recall: %.4f (%s/%s)", recall, hits, total_pos)
 
 
+def _get_blocked_product_ids(products_path: Path) -> set[str]:
+    """Return the set of product IDs marked as blocked in the products catalog."""
+    if not products_path.exists():
+        return set()
+    df = pl.read_csv(products_path, separator=";")
+    if "blocked" not in df.columns:
+        return set()
+    blocked = (
+        df.filter(pl.col("blocked").cast(pl.Utf8).str.to_lowercase().eq("true"))
+        .select(pl.col("productid").cast(pl.Utf8))
+        .to_series()
+        .to_list()
+    )
+    return set(blocked)
+
+
 def filter_active_kiosks(
     orders: pl.DataFrame,
     commerces: pl.DataFrame,
@@ -387,6 +403,18 @@ def run(config: TrainingPipelineConfig) -> None:
     products = load_products_csv(config.products_path)
     commerces = load_commerces_csv(config.commerces_path)
     clean_orders, commerces = filter_active_kiosks(clean_orders, commerces)
+
+    # Filter out orders containing blocked products
+    blocked_ids = _get_blocked_product_ids(config.products_path)
+    if blocked_ids:
+        rows_before = clean_orders.height
+        clean_orders = clean_orders.filter(
+            ~pl.col("product_id").is_in(blocked_ids)
+        )
+        LOGGER.info(
+            "Blocked products removed from orders: rows %s -> %s (blocked SKUs: %s)",
+            rows_before, clean_orders.height, len(blocked_ids),
+        )
 
     # ---- STEP 2: SPLIT DATA ----
     _banner("STEP 2 — SPLIT DATA")

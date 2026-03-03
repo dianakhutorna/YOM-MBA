@@ -106,6 +106,22 @@ def main() -> None:
     products = load_products_csv(products_path)
     commerces = load_commerces_csv(commerces_path)
 
+    # Filter out orders containing blocked products
+    if "blocked" in pl.read_csv(products_path, separator=";", n_rows=0).columns:
+        all_prods = pl.read_csv(products_path, separator=";")
+        blocked_ids = set(
+            all_prods.filter(pl.col("blocked").cast(pl.Utf8).str.to_lowercase().eq("true"))
+            .select(pl.col("productid").cast(pl.Utf8))
+            .to_series().to_list()
+        )
+        if blocked_ids:
+            orders_before = orders.height
+            orders = orders.filter(~pl.col("product_id").is_in(blocked_ids))
+            LOGGER.info(
+                "Blocked products removed from orders: rows %s -> %s (blocked SKUs: %s)",
+                orders_before, orders.height, len(blocked_ids),
+            )
+
     # Filter to active kiosks
     n_total_active_kiosks: int = 0
     if "active" in commerces.columns:

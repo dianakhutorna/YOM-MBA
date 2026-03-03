@@ -64,7 +64,24 @@ def _load_assets() -> None:
         load_parquet(global_fallback_path, label="Global fallback")
         if global_fallback_path.exists() else None
     )
-    _products = load_products_csv(products_path)
+    _products = load_products_csv(products_path)  # blocked products are filtered out
+
+    # Exclude blocked products from pre-computed predictions and fallback
+    _active_product_ids = set(
+        _products.select(pl.col("productid").cast(pl.Utf8)).to_series().to_list()
+    )
+    if _active_product_ids:
+        for col in ("anchor_product_id", "candidate_product_id"):
+            if col in preds.columns:
+                preds = preds.filter(pl.col(col).is_in(_active_product_ids))
+        if "candidate_product_id" in _fallback.columns:
+            _fallback = _fallback.filter(
+                pl.col("candidate_product_id").is_in(_active_product_ids)
+            )
+        LOGGER.info(
+            "After blocked-product filter: preds=%s rows, fallback=%s rows",
+            preds.height, _fallback.height,
+        )
 
     # Build product-name lookup for enriching responses
     if _products is not None and "name" in _products.columns:
