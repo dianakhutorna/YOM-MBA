@@ -1,0 +1,12 @@
+venv/
+.venv/
+.git/
+.github/
+__pycache__/
+*.pyc
+logs/
+tests/
+README.md
+
+training/data/
+training/models/
