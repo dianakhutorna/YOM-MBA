@@ -35,7 +35,7 @@ data/
 # Output
 outputs/
 results/
-models/
+training/models/
 
 notebooks/
 logs/

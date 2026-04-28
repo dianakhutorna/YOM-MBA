@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+mangum
+polars
+boto3
+pydantic
+pyyaml
