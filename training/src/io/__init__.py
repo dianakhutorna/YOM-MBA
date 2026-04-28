@@ -1,5 +1,6 @@
 from .loaders import (
     load_parquet,
+    load_orders_csv_chunked,
     load_orders_csv_sample,
     load_orders_parquet,
     load_products_csv,
@@ -8,6 +9,7 @@ from .loaders import (
 )
 
 __all__ = [
+    "load_orders_csv_chunked",
     "load_orders_csv_sample",
     "load_parquet",
     "load_orders_parquet",
