@@ -8,13 +8,13 @@
 4. [Batch Scoring (Inference)](#4-batch-scoring-inference)
 5. [Serving Layer](#5-serving-layer)
 6. [Features](#6-features)
-7. [Business Rules](#7-business-rules)
-8. [Fallback System](#8-fallback-system)
-9. [File Reference](#9-file-reference)
-10. [Configuration Reference](#10-configuration-reference)
-11. [Testing](#11-testing)
-12. [Deployment](#12-deployment)
-13. [Troubleshooting](#13-troubleshooting)
+7. [Fallback System](#7-fallback-system)
+8. [File Reference](#8-file-reference)
+9. [Configuration Reference](#9-configuration-reference)
+10. [Testing & Analysis](#10-testing--analysis)
+11. [Deployment](#11-deployment)
+12. [Troubleshooting](#12-troubleshooting)
+12. [Troubleshooting](#12-troubleshooting)
 
 ---
 
@@ -30,49 +30,56 @@ The system is split into three independent stages that run at different frequenc
 
 ```
 ┌────────────────────────┐
-│  STAGE 1: TRAINING     │  Run: monthly or when data/model changes
+│  STAGE 1: TRAINING     │  Frequency: monthly or on-demand
 │  training.py           │
 │                        │
 │  Input:  raw order CSVs, product catalog, kiosk metadata
 │  Output: lgbm_ranker.txt (model) + lgbm_ranker.features.json
+│  Time:   ~30 minutes
 └────────────┬───────────┘
              │ model file
              ▼
 ┌────────────────────────┐
-│  STAGE 2: SCORING      │  Run: daily or weekly
+│  STAGE 2: SCORING      │  Frequency: daily or weekly
 │  generate_predictions  │
 │                        │
 │  Input:  model + recent orders (90-day window)
 │  Output: 4 parquet files (predictions + 3 fallbacks)
+│  Time:   ~16 minutes
 └────────────┬───────────┘
-             │ parquet files
+             │ parquet files (total ~300 MB)
              ▼
 ┌────────────────────────┐
-│  STAGE 3: SERVING      │  Run: 24/7 (FastAPI)
-│  serve_bundle_api.py   │
+│  STAGE 3: SERVING      │  Frequency: 24/7 (AWS Lambda)
+│  serve_recommendations │
+│  _api + lambda_handler │
 │                        │
 │  Input:  4 parquet files (loaded at startup)
 │  Output: JSON recommendations per request (~2 ms)
+│  Startup: ~90 seconds
 └────────────────────────┘
 ```
 
 ### Why this architecture?
 
-- **No online inference** — LightGBM is never called at request time. All scoring is done ahead of time. Serving is a dictionary lookup.
-- **Decoupled stages** — Training can be done on a powerful machine; serving runs on minimal hardware.
-- **Never-empty results** — Four-level fallback guarantees a recommendation for any (kiosk, anchor) pair, even completely unknown ones.
+- **No online inference** — LightGBM is never called at request time. All scoring done in batch Stage 2. Serving is dictionary lookup.
+- **Decoupled stages** — Training runs on powerful machine; batch scoring on compute servers; Lambda runs on minimal hardware (~2 GB).
+- **Never-empty results** — Four-level fallback guarantees recommendations for any (kiosk, anchor) pair, even completely unknown.
+- **Memory safe** — Chunked CSV loading (Stage 1), batched candidate generation (Stage 1), strategic garbage collection throughout.
 
 ### Technology stack
 
 | Component | Technology |
 |-----------|-----------|
-| Data processing | Polars (columnar DataFrame) |
-| Model | LightGBM LambdaRank (learning-to-rank) |
-| Candidate generation | Market Basket Analysis (MBA) — co-occurrence, lift, cosine similarity |
-| Serving | FastAPI + Uvicorn |
+| Data processing | Polars 0.20+ (columnar DataFrame, memory-efficient) |
+| Model | LightGBM LambdaRank (learning-to-rank, 869 iterations) |
+| Candidate generation | Market Basket Analysis (MBA) — co-occurrence counts, lift, cosine similarity |
+| Serving | FastAPI (ASGI) + Mangum (Lambda adapter) |
+| Deployment | AWS Lambda + Docker (ECR) |
 | Storage | Parquet files (no database) |
-| Config | YAML |
-| Testing | pytest + custom smoke tests |
+| Config | YAML files |
+| Testing | pytest + analysis scripts |
+| CI/CD | GitHub Actions (auto-deploy on push)
 
 ---
 
@@ -262,75 +269,99 @@ Conservative regularization (high L1/L2, low num_leaves/depth) to prevent overfi
 
 ## 5. Serving Layer
 
-### serve_bundle.py — Core logic
+### Production: AWS Lambda
 
-**File:** `training/src/scripts/serve_bundle.py` (~411 lines)
-
-The core function is `build_bundle()`:
-
-```python
-def build_bundle(
-    preds, fallback, products, *,
-    kiosk_id, anchor_product_id,
-    included_products, excluded_products, allowed_categories,
-    n_group_key, n_min, n_max,
-    category_fallback=None, global_fallback=None,
-) -> pl.DataFrame
+**Architecture:**
+```
+Request → FastAPI (ASGI) → Mangum (Lambda adapter) → handler event
+         ↓
+    Dict lookup (kiosk, anchor)
+         ↓
+    4-level fallback
+         ↓
+    Apply business rules (exclusions, category filters, etc.)
+         ↓
+    JSON response
 ```
 
-It implements the 4-level fallback chain (see Fallback System section) and delegates business rule application to `apply_bundle_rules()`.
+**Files:**
+- `training/src/scripts/serve_recommendations_api.py` — FastAPI application (REST API definition)
+- `training/src/scripts/lambda_handler.py` — AWS Lambda entry point (Mangum adapter)
+- `training/src/services/recommendation_service.py` — Core lookup + fallback logic
 
-Can be used standalone via CLI:
+**Startup Process:**
+1. Lambda initializes with `lambda_handler.handler`
+2. Mangum converts Lambda event to ASGI request
+3. FastAPI app loads (first-time startup):
+   - Load 4 parquet files (256 MB total) from `training/data/interim/`
+   - Build dict-index: `{(kiosk_id, anchor_product_id): [recs]}` for O(1) lookup
+   - Load product lookup dict for fallback mapping
+4. Request routed to endpoint handler
+5. Return JSON response
+
+**Startup Time:** ~90 seconds (dominated by parquet loading)
+
+**Memory Usage:** ~2 GB per Lambda instance (parquets + dict-index)
+
+**Request Latency:** ~2 ms (after startup)
+
+**Endpoints:**
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/health` | GET | Readiness check: `{"status": "ok"}` |
+| `/recommendations` | GET | Get recommendations for (kiosk, anchor) |
+| `/recommendations/multi` | POST | Batch recommendations for multiple queries |
+| `/docs` | GET | Swagger UI (FastAPI auto-generated) |
+
+**Example request:**
+```
+GET /recommendations?kioskId=fe7ef5cd7c27&anchorId=000056-002&limit=30
+```
+
+**Example response:**
+```json
+[
+  {
+    "anchor_id": "000056-002",
+    "kiosk_id": "fe7ef5cd7c27...",
+    "product_id": "002030-001",
+    "model_id": "lgbm_ranker",
+    "recommendation_date": "2026-05-05T10:30:45Z"
+  },
+  ...
+]
+```
+
+### Local Development
+
+For local testing during development (NOT production, use Lambda for production):
+
 ```bash
-./venv/bin/python -m training.src.scripts.serve_bundle \
-  --kiosk-id abc123 --anchor-product-id 000056-002
+# Install full dependencies
+pip install -r requirements.txt
+
+# Start server
+./venv/bin/python -m training.src.scripts.serve_recommendations_api
+
+# Access API
+open http://localhost:8000/docs
 ```
 
-### serve_bundle_api.py — FastAPI service
+This loads parquets from local `training/data/interim/` directory (~2 GB RAM).
 
-**File:** `training/src/scripts/serve_bundle_api.py` (~155 lines)
+### 4-Level Fallback
 
-**Startup process:**
-1. Read config from `BUNDLE_CONFIG` env var (default: `training/configs/serve_bundle.yaml`)
-2. Load 4 parquet files into memory
-3. Load products CSV (for name/category enrichment)
-4. Build dict-index: `{(kiosk_id, anchor_product_id): DataFrame}` — pre-groups all 26.9M prediction rows for O(1) lookup
-5. Build product name lookup dict
+The serving layer guarantees **non-empty recommendations** through intelligent fallback:
 
-**Startup time:** ~60–90 seconds (dominated by parquet loading and dict construction)
+| Level | Source | Score Range | When used |
+|-------|--------|------------|-----------|
+| 1 | LightGBM predictions | [-8, +4] | Known kiosk + known anchor (~83% of queries) |
+| 2 | Per-anchor MBA | [scaled] | Unknown kiosk, known anchor (~99% with fallback) |
+| 3 | Per-category popularity | [scaled] | Unknown anchor (uses anchor's category) |
+| 4 | Global popularity | [scaled] | Everything unknown (last resort, always succeeds) |
 
-**Memory usage:** ~2 GB (256 MB parquet + index overhead)
-
-**Request processing:**
-1. O(1) dict lookup → pre-filtered DataFrame for this (kiosk, anchor)
-2. `build_bundle()` applies business rules + fallback
-3. Enrich items with product names
-4. Return JSON with `n_items`, `latency_ms`, and item list
-
-**Measured latency:** ~2 ms per request (after startup)
-
-### Endpoints
-
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /health` | Returns `{"status": "ok"}` when assets are loaded. Use for k8s readiness probes. |
-| `GET /bundle` | Main recommendation endpoint. All business rules are query parameters. |
-| `GET /docs` | Auto-generated Swagger UI (FastAPI built-in) |
-
-### Starting the server
-
-```bash
-BUNDLE_CONFIG=training/configs/serve_bundle.yaml \
-uvicorn training.src.scripts.serve_bundle_api:app \
-  --host 0.0.0.0 --port 8000
-
-# With multiple workers (production)
-BUNDLE_CONFIG=training/configs/serve_bundle.yaml \
-uvicorn training.src.scripts.serve_bundle_api:app \
-  --host 0.0.0.0 --port 8000 --workers 4
-```
-
-Note: Each worker loads its own copy of the data (~2 GB each). With 4 workers, expect ~8 GB RAM.
+All fallback scores are normalized to maintain consistent ranking when mixed with Level 1 predictions.
 
 ---
 
@@ -368,34 +399,7 @@ The model relies most heavily on:
 
 ---
 
-## 7. Business Rules
-
-**Function:** `apply_bundle_rules()` in `serve_bundle.py`
-
-Business rules are applied **after** scoring and **before** returning results. They are specified per-request via API query parameters or CLI flags.
-
-| Rule | Parameter | Behavior |
-|------|-----------|----------|
-| **Exclude products** | `excluded_products` | Remove specific product IDs from recommendations |
-| **Category filter** | `allowed_categories` | Only keep products from specified categories |
-| **Category diversity** | `n_group_key` | Max N items per category (enforced across all fallback levels) |
-| **Force include** | `included_products` | Inject products with highest score (appear first). If product isn't in candidates, it's added. |
-| **Bundle size min** | `n_min` | Log a warning if fewer items than this (but still return what's available) |
-| **Bundle size max** | `n_max` | Hard cap on number of items returned |
-
-### Processing order
-
-1. Exclude products → 2. Filter categories → 3. Sort by score → 4. Enforce n_group_key → 5. Force-include products → 6. Clip to n_max
-
-### Priority when rules conflict
-
-- `included_products` **wins** over `excluded_products` — if a product appears in both lists, it will be included
-- `n_group_key` is enforced **after** all fallback levels fill — so fallback items also respect category diversity
-- `allowed_categories` is **strictly enforced** in fallback — fallback items from forbidden categories are excluded
-
----
-
-## 8. Fallback System
+## 7. Fallback System
 
 The system guarantees **non-empty recommendations** for any input through a 4-level fallback chain.
 
@@ -442,67 +446,76 @@ All fallback levels have their scores normalized to the model's actual score ran
 
 ---
 
-## 9. File Reference
+## 8. File Reference
 
-### Source code
+### Source code structure
+
+#### Core pipeline files
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `src/pipelines/training.py` | ~872 | End-to-end training pipeline orchestration |
-| `src/scripts/run_training_pipeline.py` | ~20 | CLI wrapper for training pipeline |
-| `src/scripts/generate_predictions.py` | ~310 | Batch scoring and fallback generation |
-| `src/scripts/serve_bundle.py` | ~411 | Bundle building with business rules and 4-level fallback |
-| `src/scripts/serve_bundle_api.py` | ~155 | FastAPI service with dict-index for O(1) lookup |
-| `src/scripts/test_serve_bundle.py` | ~510 | Comprehensive smoke test (scenarios A–G) |
-| `src/scripts/check_personalization.py` | — | Analysis: how different are recommendations across kiosks |
-| `src/scripts/check_new_vs_repeat.py` | — | Analysis: new vs. repeat product recommendations |
-| `src/features.py` | — | Feature orchestrator, hash encoding, column alignment |
-| `src/config.py` | — | YAML config loader |
-| `src/paths.py` | — | Path constants (RAW_DIR, EXTERNAL_DIR, INTERIM_DIR, etc.) |
-| `src/logging_utils.py` | — | Logging setup with file + console handlers |
+| `src/pipelines/training.py` | ~931 | End-to-end training: preprocessing → split → baskets → candidates → features → train → eval |
+| `src/pipelines/training_experiment.py` | ~684 | Variant: train/test already pre-split in separate CSV files |
+| `src/scripts/run_training_pipeline.py` | ~20 | CLI wrapper for training.py |
+| `src/scripts/generate_predictions.py` | ~410 | Batch inference: score predictions + generate 4 fallback parquets |
 
-### Pipeline steps (`src/steps/`)
+#### Serving files
 
-| File | Function | Purpose |
-|------|----------|---------|
-| `preprocessing.py` | `preprocess_orders()` | Clean raw CSVs: validate columns, cast types, deduplicate, normalize |
-| `split_orders.py` | `split_orders_by_time()` | Time-sorted train/val/test split |
-| `build_baskets.py` | `build_baskets()` | Group orders → (kiosk, date) baskets with product lists |
-| `generate_candidates.py` | `generate_candidates()` | MBA co-occurrence: cooc_count, support, lift, cosine_sim |
-| `select_top_k_candidates.py` | `select_top_k_candidates()` | Keep top-K candidates per anchor by lift/cosine |
-| `build_feature_table.py` | `build_feature_table()` | Cross-join kiosks × anchors × candidates |
-| `add_features.py` | `add_features()` | Compute all 8 features |
-| `build_labels.py` | `build_labels()` | Binary labels from co-purchase pairs |
-| `rank_eval_at_k.py` | `rank_eval_at_k()` | HitRate, NDCG, Recall, MRR, Precision @K |
+| File | Purpose |
+|------|---------|
+| `src/scripts/serve_recommendations_api.py` | FastAPI application (REST endpoints: /health, /recommendations, /recommendations/multi) |
+| `src/scripts/lambda_handler.py` | AWS Lambda entry point (Mangum ASGI adapter) |
+| `src/services/recommendation_service.py` | Core service: load parquets, build dict-index, O(1) lookup, 4-level fallback |
 
-### I/O helpers (`src/io/`)
+#### Analysis tools
 
-| Function | Purpose |
-|----------|---------|
-| `load_orders_csv_sample()` | Load N rows from raw CSV(s) |
-| `load_orders_parquet()` | Load preprocessed orders |
-| `load_products_csv()` | Load product catalog |
-| `load_commerces_csv()` | Load kiosk metadata |
-| `load_parquet()` | Generic parquet loader |
-| `save_parquet()` | Save DataFrame to parquet |
+| File | Purpose |
+|------|---------|
+| `src/scripts/check_personalization.py` | Analyze kiosk diversity in recommendations |
+| `src/scripts/check_new_vs_repeat.py` | Analyze new vs. repeat product coverage |
 
-### Tests (`tests/`)
+#### Pipeline step modules (src/steps/)
 
-| File | What it tests |
-|------|--------------|
-| `test_preprocessing.py` | Order cleaning, type casting, deduplication |
-| `test_build_baskets.py` | Basket construction from orders |
-| `test_generate_candidates.py` | MBA co-occurrence computation |
-| `test_select_top_k.py` | Top-K candidate selection |
-| `test_build_feature_table.py` | Feature table cross-join |
-| `test_features_orchestrator.py` | Feature computation pipeline |
-| `test_build_labels.py` | Label generation from co-purchase |
-| `test_pipeline_smoke.py` | End-to-end pipeline with tiny data |
-| `conftest.py` | Shared fixtures |
+| Module | Function | Purpose |
+|--------|----------|---------|
+| `preprocessing.py` | `preprocess_orders()` | Clean CSVs: validate columns, deduplicate, normalize |
+| `split_orders.py` | `split_orders_by_time()` | Time-based train/val/test split (80% / 10% / 10%) |
+| `build_baskets.py` | `build_baskets()` | Group orders into (kiosk, date) baskets |
+| `generate_candidates.py` | `generate_candidates()` | MBA co-occurrence: cooc_count, lift, cosine_sim (batched generation for memory safety) |
+| `select_top_k_candidates.py` | `select_top_k_candidates()` | Filter to top-K candidates per anchor |
+| `build_feature_table.py` | `build_feature_table()` | Cross-join: kiosks × anchors × candidates |
+| `add_features.py` | `add_features()` | Compute 8 features: cooc_cosine_sim, pop_store, pop_global, etc. |
+| `build_labels.py` | `build_labels()` | Generate binary labels from co-purchase pairs |
+| `rank_eval_at_k.py` | `rank_eval_at_k()` | Compute HitRate, NDCG, Recall, MRR, Precision @K |
+
+#### I/O and utilities (src/io/, src/)
+
+| File | Purpose |
+|------|---------|
+| `io/loaders.py` | Load orders, products, commerces; includes `load_orders_csv_chunked()` for memory-safe batch loading |
+| `io/__init__.py` | Export all loader functions |
+| `features.py` | Feature orchestrator, hash encoding, column alignment |
+| `config.py` | YAML config loader |
+| `paths.py` | Path constants (RAW_DIR, EXTERNAL_DIR, INTERIM_DIR, MODELS_DIR, LOGS_DIR) |
+| `logging_utils.py` | Logging setup (file + console, timestamp-based log filenames) |
+
+#### Tests (tests/)
+
+| File | Purpose |
+|------|---------|
+| `test_preprocessing.py` | Unit tests: order cleaning, deduplication |
+| `test_build_baskets.py` | Unit tests: basket construction |
+| `test_generate_candidates.py` | Unit tests: MBA pair generation |
+| `test_build_feature_table.py` | Unit tests: feature table cross-join |
+| `test_select_top_k.py` | Unit tests: top-K selection |
+| `test_features_orchestrator.py` | Unit tests: feature computation |
+| `test_build_labels.py` | Unit tests: label generation |
+| `test_pipeline_smoke.py` | Integration test: full pipeline on toy data |
+| `conftest.py` | Shared pytest fixtures |
 
 ---
 
-## 10. Configuration Reference
+## 9. Configuration Reference
 
 ### training_pipeline.yaml
 
@@ -570,42 +583,21 @@ category_fallback_path: training/data/interim/category_fallback.parquet
 global_fallback_path: training/data/interim/global_fallback.parquet
 
 # Inference
-inference_last_n_days: 90                     # Use orders from last N days
+inference_last_n_days: 90                     # Use orders from last 90 days (83.6% coverage)
 inference_max_rows: 0                         # 0 = no limit
-min_cooc: 2                                   # MBA filter
-min_lift: 1.2                                 # MBA filter
-top_k_candidates: 50                          # MBA candidates per anchor
-catalog_top_k: 20                             # Final top-K per (kiosk, anchor)
-predict_batch_size: 200000                    # Memory safety
-query_sample_n: 0                             # 0 = no sampling (all queries)
-```
-
-### serve_bundle.yaml
-
-```yaml
-# Default query (for CLI testing)
-kiosk_id: "fe7ef5cd7c273ec75600d6c710216f69"
-anchor_product_id: "000056-002"
-included_products: ""
-excluded_products: "004747-001"
-allowed_categories: ""
-agg_key: ""
-n_group_key: 2                                # Max 2 items per category
-n_min: 4                                      # Warn if < 4 items
-n_max: 10                                     # Return max 10 items
-
-# Paths
-predictions_path: training/data/interim/predictions.parquet
-popularity_path: training/data/interim/popularity_fallback.parquet
-category_fallback_path: training/data/interim/category_fallback.parquet
-global_fallback_path: training/data/interim/global_fallback.parquet
-products_path: training/data/external/products_v2.csv
+min_cooc: 2                                   # MBA filter: minimum co-occurrence
+min_lift: 1.2                                 # MBA filter: minimum lift
+top_k_candidates: 50                          # MBA candidates per anchor (note: < training top_k=100)
+catalog_top_k: 20                             # Final top-K stored per (kiosk, anchor)
+predict_batch_size: 200000                    # Memory-safe batch size for prediction
+query_sample_n: 0                             # 0 = use all queries (no sampling)
 ```
 
 ### features.yaml
 
 ```yaml
-# Legacy feature flags — most features are now always computed in add_features.py
+# Legacy feature flags — all features always computed in add_features.py
+# These flags are kept for backward compatibility but have minimal effect
 include_product_features: false
 include_kiosk_features: true
 include_behavioral_features: true
@@ -615,9 +607,7 @@ encode_channel: false
 encode_region: false
 ```
 
----
-
-## 11. Testing
+## 10. Testing & Analysis
 
 ### Unit tests
 
@@ -625,87 +615,190 @@ encode_region: false
 ./venv/bin/python -m pytest training/tests/ -q
 ```
 
-18 tests covering all pipeline steps: preprocessing, baskets, candidates, features, labels, top-K selection, and a full pipeline smoke test with synthetic data.
+18 tests covering all pipeline steps: preprocessing, baskets, candidates, features, labels, top-K selection, and a full end-to-end smoke test on tiny synthetic data.
 
-### Smoke test (serve_bundle)
+| Test file | Coverage |
+|-----------|----------|
+| `test_preprocessing.py` | CSV cleaning, type casting, deduplication |
+| `test_build_baskets.py` | Basket construction from orders |
+| `test_generate_candidates.py` | MBA co-occurrence computation and batched generation |
+| `test_build_feature_table.py` | Cross-join and feature alignment |
+| `test_select_top_k.py` | Top-K candidate filtering |
+| `test_features_orchestrator.py` | Feature computation (8 features) |
+| `test_build_labels.py` | Label generation from co-purchase pairs |
+| `test_pipeline_smoke.py` | **Integration test:** full pipeline on 100 rows of data |
 
-```bash
-./venv/bin/python -m training.src.scripts.test_serve_bundle
-```
-
-Requires generated parquet files. Tests 7 scenario groups:
-
-| Group | Tests | What it verifies |
-|-------|-------|-----------------|
-| A | 1 | Known kiosk + known anchor → gets personalized results |
-| B | 1 | Unknown kiosk + known anchor → falls back to per-anchor MBA |
-| C | 1 | Known kiosk + unknown anchor → falls back to category/global |
-| D | 1 | Unknown kiosk + unknown anchor → falls back to global only |
-| E | 250 | Random queries: 0 empty bundles, 100% full, p50 ~18ms, p95 ~21ms |
-| F | 100 | Relevance: ~19% item overlap, ~82% category overlap with kiosk history |
-| G | 12 | Business rules: exclusions, inclusions, category filters, n_group_key, n_max, combined rules, edge cases |
-
-### Quality checks
+### Quality analysis tools
 
 ```bash
-# How personalized are recommendations across kiosks?
+# Check how personalized recommendations are across kiosks
 ./venv/bin/python -m training.src.scripts.check_personalization \
-  --config training/configs/training_pipeline.yaml --top-k 5 --sample-kiosks 300
+  --config training/configs/training_pipeline.yaml \
+  --top-k 5 \
+  --sample-kiosks 300
 
-# What fraction of recommendations are new vs. repeat products?
-./venv/bin/python -m training.src.scripts.check_new_vs_repeat --top-k 5 --sample-kiosks 200
+# Output: Unique recommendation sets, coverage metrics, Jaccard similarity, per-kiosk examples
+```
+
+```bash
+# Analyze new vs. repeat product coverage
+./venv/bin/python -m training.src.scripts.check_new_vs_repeat \
+  --top-k 5 \
+  --sample-kiosks 200
+
+# Output: Fraction of new products in recommendations, overlap with repeat products
+```
+
+### Local API testing (development only)
+
+```bash
+# Start FastAPI server locally (NOT used in production)
+./venv/bin/python -m training.src.scripts.serve_recommendations_api
+
+# Test endpoints
+curl http://localhost:8000/health
+# {"status": "ok"}
+
+curl "http://localhost:8000/recommendations?kioskId=TEST&anchorId=TEST&limit=10"
+
+# View auto-generated API docs
+open http://localhost:8000/docs
 ```
 
 ---
 
-## 12. Deployment
+## 11. Deployment
 
-### Production deployment steps
+### Architecture overview
 
 ```
-1. Train model (run once or monthly):
-   ./venv/bin/python -m training.src.scripts.run_training_pipeline \
-     --config training/configs/training_pipeline.yaml
-
-2. Generate predictions (run daily/weekly):
-   ./venv/bin/python -m training.src.scripts.generate_predictions \
-     --config training/configs/generate_predictions.yaml
-
-3. Start API server:
-   BUNDLE_CONFIG=training/configs/serve_bundle.yaml \
-   uvicorn training.src.scripts.serve_bundle_api:app \
-     --host 0.0.0.0 --port 8000
-
-4. Verify:
-   curl http://localhost:8000/health
-   # {"status": "ok"}
+GitHub          ECR              Lambda          CloudFront
+  ↓              ↓                  ↓                ↓
+Push to main ← Docker push ←  Auto-update  ← Edge cache
+   |                            Instance
+   └── Triggers .github/workflows/deploy.yml
 ```
 
-### Refresh cycle
+### Deployment workflow
 
-| What | Frequency | Time | Impact |
-|------|-----------|------|--------|
-| Retrain model | Monthly | ~30 min | New model file. Requires rerunning step 2. |
-| Regenerate predictions | Daily/Weekly | ~16 min | New parquet files. Requires server restart or hot-reload. |
-| Server restart | After new parquets | ~90 sec | Downtime during loading. Use blue-green deployment. |
+The system uses a **3-stage deployment architecture** with automatic CI/CD:
 
-### Hardware requirements
+```
+Stage 1: Training (as needed, ~30 min)
+│
+├─ Run ./venv/bin/python -m training.src.scripts.run_training_pipeline
+├─ Output: training/models/lgbm_ranker.txt + .features.json
+└─ Stores model in repository
 
-| Stage | CPU | RAM | Disk |
-|-------|-----|-----|------|
-| Training | 4+ cores | 4 GB | 2 GB |
-| Batch scoring | 4+ cores | 8 GB | 1 GB |
-| Serving (per worker) | 1 core | 2 GB | 300 MB |
+Stage 2: Batch Scoring (daily/weekly, ~16 min)
+│
+├─ Run ./venv/bin/python -m training.src.scripts.generate_predictions
+├─ Output: 4 parquet files (predictions, popularity, category, global)
+└─ Stores predictions in training/data/interim/
 
-### Environment variable
+Stage 3: Deploy to Lambda (automatic on git push)
+│
+├─ GitHub Actions triggers .github/workflows/deploy.yml
+├─ Build Docker image (Linux AMD64 for Lambda)
+├─ Push to ECR (Amazon Elastic Container Registry)
+├─ Update Lambda function with new image
+└─ Lambda auto-restarts (~90 sec downtime, background)
+```
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `BUNDLE_CONFIG` | `training/configs/serve_bundle.yaml` | Path to serving config (used by API) |
+### AWS Infrastructure
+
+| Resource | Details |
+|----------|---------|
+| **AWS Account** | 124661688886 (diana production) |
+| **Region** | eu-central-1 |
+| **ECR Repository** | diana-backend |
+| **Lambda Function** | diana-backend |
+| **Lambda RAM** | 2 GB |
+| **Lambda Timeout** | 30 seconds |
+| **Lambda Role** | Uses OpenID Connect (OIDC) for secure GitHub Actions auth |
+| **Entry Point** | `training.src.scripts.lambda_handler.handler` |
+| **Startup Time** | ~90 sec (parquet loading + index building) |
+| **Request Latency** | ~2 ms (per recommendation) |
+
+### GitHub Actions Workflow
+
+**Location:** `.github/workflows/deploy.yml`
+
+**Trigger:** Push to `main` or `add-backend` branch
+
+**Steps:**
+1. Checkout code
+2. Build Docker image (multistage build to minimize size)
+3. Authenticate with AWS via OIDC (no hardcoded credentials)
+4. Push image to ECR
+5. Update Lambda function URI
+6. Lambda container re-initializes with new code
+
+### Docker Image
+
+```dockerfile
+FROM public.ecr.aws/lambda/python:3.12
+
+COPY requirements-backend.txt .
+RUN pip install --no-cache-dir -r requirements-backend.txt
+
+COPY training /var/task/training
+
+CMD ["training.src.scripts.lambda_handler.handler"]
+```
+
+**Image size:** ~500 MB (compressed)
+**Runtime:** ~300 MB (uncompressed in Lambda)
+
+### Requirements files
+
+**requirements-backend.txt** (used by Lambda):
+- **Purpose:** Minimal dependencies for runtime (no dev tools)
+- **Packages:** FastAPI, uvicorn, Mangum, Polars, boto3, pydantic, pyyaml
+- Used to keep Lambda startup time and image size small
+
+**requirements.txt** (used for local development):
+- **Purpose:** Full development environment (training, testing, analysis)
+- **Packages:** fastapi, uvicorn, mangum, polars, lightgbm, boto3, pytest, numpy, pydantic, pyyaml
+
+Both files have been cleaned of unused dependencies.
+
+### Hardware specs & timing
+
+| Component | CPU | RAM | Disk | Duration |
+|-----------|-----|-----|------|----------|
+| Training | 4+ cores | 4 GB | 2 GB | ~30 min |
+| Batch Scoring | 4+ cores | 8 GB | 1 GB | ~16 min |
+| Lambda (per request) | 0.5 vCPU* | 2 GB | 512 MB | ~2 ms |
+
+*Lambda allocates CPU proportional to RAM. 2 GB RAM = ~0.5 vCPU @ 5% utilization.
+
+### Monitoring & Refresh cycle
+
+| What | When | Impact | Downtime |
+|------|------|--------|----------|
+| Model retraining | Monthly (on-demand) | New model file. Triggers batch scoring. | None (async) |
+| Batch scoring | Daily/Weekly | New parquets pushed to Git. Auto-deploys to Lambda. | ~90 sec (Lambda restart) |
+| Code update | After git push | New image in ECR. Lambda auto-updates. | ~2 min (container handoff) |
+
+### Troubleshooting deployment
+
+**Lambda fails to start:**
+- Check CloudWatch logs: AWS Console > Lambda > diana-backend > Logs
+- Common causes: missing parquet files, corrupted index, OOM (increase RAM)
+
+**Predictions outdated:**
+- Verify latest parquets in `training/data/interim/` match local copy
+- Re-run batch scoring and git push to re-deploy
+
+**Slow requests:**
+- First request after Lambda restart is slow (~90 sec) due to cold start
+- Subsequent requests: ~2 ms
+- Monitor with CloudWatch Metrics
 
 ---
 
-## 13. Troubleshooting
+## 12. Troubleshooting
 
 ### Common issues
 
@@ -721,13 +814,14 @@ Requires generated parquet files. Tests 7 scenario groups:
 
 **Empty predictions for a kiosk**
 - Kiosk may not be in `commerces.csv` (not "active")
-- Or kiosk has no orders in the 90-day window
-- The 4-level fallback still provides recommendations even without predictions
+- Or kiosk has no orders in the 90-day historical window
+- The 4-level fallback system still provides recommendations even without personalized predictions
 
 **Server startup takes too long**
-- Loading 256 MB parquet + building dict-index takes ~60–90 seconds
-- This is a one-time cost; subsequent requests are ~2 ms
-- For production, use health check endpoint to gate traffic
+- Lambda cold start (first request after deploy): ~90 seconds
+- This is normal and expected; subsequent requests are ~2 ms
+- Use health check endpoint to gate traffic during startup
+- See Section 11: Deployment for Lambda performance details
 
 **Candidate alignment between training and inference**
 - `top_k` (training, config) = 100, `top_k_candidates` (inference) = 50
@@ -736,35 +830,97 @@ Requires generated parquet files. Tests 7 scenario groups:
 
 ### Logs location
 
-All logs are written to `logs/` with timestamps:
+All logs are written to `logs/` directory with timestamps:
 ```
 logs/
-├── training_20260301_120000.log
-├── generate_predictions_20260301_130000.log
-├── serve_bundle_20260301_140000.log
-└── test_serve_bundle_20260301_150000.log
+├── training_20260301_120000.log      (full training pipeline)
+├── generate_predictions_20260301_130000.log  (batch inference)
+└── experiment_1m_eval_curve.csv     (evaluation metrics)
+```
+
+### Debugging: local development
+
+```bash
+# Start FastAPI server locally for testing (NOT production)
+./venv/bin/python -m training.src.scripts.serve_recommendations_api
+
+# Test endpoints
+curl http://localhost:8000/health
+# {"status": "ok"}
+
+curl "http://localhost:8000/recommendations?kioskId=TEST&anchorId=TEST&limit=10"
+
+# View auto-generated API docs
+open http://localhost:8000/docs
 ```
 
 ### Useful debugging commands
 
 ```bash
 # Check model feature list
-cat training/models/lgbm_ranker.features.json
+cat training/models/lgbm_ranker.features.json | python3 -m json.tool | head -20
 
-# Check predictions parquet schema
-./venv/bin/python -c "import polars as pl; df=pl.read_parquet('training/data/interim/predictions.parquet'); print(df.schema); print(f'Rows: {df.height}, Unique kiosks: {df[\"kiosk_id\"].n_unique()}, Anchors: {df[\"anchor_product_id\"].n_unique()}')"
-
-# Check fallback sizes
-./venv/bin/python -c "
+# Check predictions parquet schema and size
+./venv/bin/python3 << 'EOF'
 import polars as pl
-for f in ['predictions','popularity_fallback','category_fallback','global_fallback']:
-    p = f'training/data/interim/{f}.parquet'
-    try:
-        df = pl.read_parquet(p)
-        print(f'{f}: {df.height} rows, {df.estimated_size(\"mb\"):.1f} MB')
-    except: print(f'{f}: not found')
-"
+df = pl.read_parquet('training/data/interim/predictions.parquet')
+print(f"Schema: {df.schema}")
+print(f"Rows: {df.height}")
+print(f"Unique kiosks: {df['kiosk_id'].n_unique()}")
+print(f"Unique anchors: {df['anchor_product_id'].n_unique()}")
+EOF
 
-# Quick API test
-curl -s "http://localhost:8000/bundle?kiosk_id=TEST&anchor_product_id=TEST" | python3 -m json.tool
+# Check all fallback files
+./venv/bin/python3 << 'EOF'
+import polars as pl
+import os
+for fname in ['predictions', 'popularity_fallback', 'category_fallback', 'global_fallback']:
+    path = f'training/data/interim/{fname}.parquet'
+    if os.path.exists(path):
+        df = pl.read_parquet(path)
+        size_mb = os.path.getsize(path) / 1024 / 1024
+        print(f'{fname}: {df.height} rows, {size_mb:.1f} MB')
+    else:
+        print(f'{fname}: not found')
+EOF
+
+# Quick test of the recommendation logic
+./venv/bin/python3 << 'EOF'
+from training.src.services.recommendation_service import RecommendationService
+from training.src.config import CONFIG
+
+# Initialize service with current config
+service = RecommendationService.from_config(CONFIG)
+# Test with arbitrary kiosk/anchor IDs
+recs = service.get_recommendations(kiosk_id='TEST', anchor_id='TEST', limit=10)
+print(f'Got {len(recs)} recommendations')
+EOF
 ```
+```
+
+### Lambda-specific debugging
+
+**View Lambda logs:**
+```bash
+# Via AWS CLI
+aws logs tail /aws/lambda/diana-backend --follow
+
+# Via AWS Console:
+# Lambda > diana-backend > Monitor > Logs > View logs in CloudWatch
+```
+
+**Check Lambda memory usage:**
+```bash
+aws lambda get-function-concurrency --function-name diana-backend
+```
+
+**Manual Lambda test:**
+```bash
+aws lambda invoke \
+  --function-name diana-backend \
+  --payload '{"path":"/health"}' \
+  response.json
+cat response.json
+```
+
+---
