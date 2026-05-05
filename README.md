@@ -68,7 +68,8 @@ training/
 
 ---
 
-##Memory:
+
+## Memory:
   - Training: 4 GB
   - Batch scoring: 8 GB  
   - Lambda (per worker): 2 GB (includes 256 MB parquets + dict-index)
@@ -81,7 +82,6 @@ Two requirements files:
 - `requirements-backend.txt` — minimal Lambda runtime (FastAPI, Polars, Boto3 only
 
 - Python **3.11+**
-- ~500 MB RAM for training, ~1 GB for inference, ~2 GB for API (dict-index)
 
 ---
 
