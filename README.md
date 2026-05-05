@@ -159,7 +159,7 @@ training/data/raw/
 |-----------|---------|-------------|
 | `inference_last_n_days` | 90 | Time window for recent orders |
 | `top_k_candidates` | 50 | MBA candidates per anchor |
-| `catalog_top_k` | 20 | Final top-K per (kiosk, anchor) |
+| `catalog_top_k` | 30 | Final top-K per (kiosk, anchor) |
 
 ---
 
@@ -279,7 +279,6 @@ open http://localhost:8000/docs
 |--------|---------|---------|
 | `training_pipeline.yaml` | `run_training_pipeline.py` | Training hyperparams, data paths, split ratios, LightGBM settings |
 | `generate_predictions.yaml` | `generate_predictions.py` | Inference window (90d), candidate settings, output paths |
-| `features.yaml` | `features.py` | Feature group flags (legacy, most features always computed) |
 
 ---
 
