@@ -17,6 +17,6 @@ inference_max_rows: 0  # 0 = unlimited — use all data from the time window
 min_cooc: 2
 min_lift: 1.2
 top_k_candidates: 50
-catalog_top_k: 20          # top-N candidates per (kiosk, anchor) in the catalog
+catalog_top_k: 30          # top-N candidates per (kiosk, anchor) in the catalog
 predict_batch_size: 200000
 query_sample_n: 0
