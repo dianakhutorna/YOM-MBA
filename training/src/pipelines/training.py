@@ -22,7 +22,6 @@ from pathlib import Path
 
 import lightgbm as lgb
 import numpy as np
-import pandas as pd
 import polars as pl
 
 from training.src.config import load_yaml_config
@@ -841,10 +840,16 @@ def run(config: TrainingPipelineConfig) -> None:
         LOGGER.info("Best metrics: %s", best)
 
     # Feature importance
-    imp_df = pd.DataFrame(
-        {"feature": feature_cols, "importance": booster.feature_importance(importance_type="gain")}
-    ).sort_values("importance", ascending=False)
-    LOGGER.info("Feature importance (gain):\n%s", imp_df.to_string(index=False))
+    importances = booster.feature_importance(importance_type="gain")
+    feature_importance_list = sorted(
+        zip(feature_cols, importances),
+        key=lambda x: x[1],
+        reverse=True
+    )
+    importance_str = "\n".join(
+        f"{feat:20s} {imp:15.6e}" for feat, imp in feature_importance_list
+    )
+    LOGGER.info("Feature importance (gain):\n%s", importance_str)
 
     # Save artifacts before offline evaluation so the model is preserved
     # even if evaluation fails.
