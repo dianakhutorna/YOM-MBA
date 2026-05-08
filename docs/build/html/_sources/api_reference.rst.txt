@@ -1,0 +1,745 @@
+API Reference
+=============
+
+Complete description of all API endpoints and parameters.
+
+Main Endpoint
+--------------
+
+**Base URL:**
+
+.. code-block:: text
+
+   Production: https://xxxxx.execute-api.us-east-1.amazonaws.com/prod/recommend
+   Staging: https://xxxxx.execute-api.us-east-1.amazonaws.com/staging/recommend
+   Local: http://localhost:8000/recommend
+
+POST /recommend
+^^^^^^^^^^^^^^^
+
+Get recommendations for products.
+
+**Request:**
+
+.. code-block:: json
+
+   {
+     "kiosk_id": "1001",
+     "anchor_product_id": "5000",
+     "limit": 5,
+     "exclude_products": ["5001", "5002"],
+     "category_filter": null
+   }
+
+**Parameters:**
+
++--------------------+----------+----------+--------------------------+
+| Parameter          | Type     | Default  | Description              |
++====================+==========+==========+==========================+
+| kiosk_id           | string   | required | ID of point of sale      |
++--------------------+----------+----------+--------------------------+
+| anchor_product_id  | string   | required | ID of anchor product     |
++--------------------+----------+----------+--------------------------+
+| limit              | integer  | 5        | How many items to return |
+|                    |          |          | (max: 20)                |
++--------------------+----------+----------+--------------------------+
+| exclude_products   | array    | []       | Products to exclude      |
++--------------------+----------+----------+--------------------------+
+| category_filter    | string   | null     | Category filter          |
++--------------------+----------+----------+--------------------------+
+
+**Examples:**
+
+**Simple request:**
+
+.. code-block:: bash
+
+   curl -X POST https://api.yom.example.com/recommend \
+     -H "Content-Type: application/json" \
+     -d '{
+       "kiosk_id": "1001",
+       "anchor_product_id": "5000",
+       "limit": 5
+     }'
+
+**With exclusions:**
+
+.. code-block:: bash
+
+   curl -X POST https://api.yom.example.com/recommend \
+     -H "Content-Type: application/json" \
+     -d '{
+       "kiosk_id": "1001",
+       "anchor_product_id": "5000",
+       "limit": 5,
+       "exclude_products": ["5001", "5002"]
+     }'
+
+**With category filter:**
+
+.. code-block:: bash
+
+   curl -X POST https://api.yom.example.com/recommend \
+     -H "Content-Type: application/json" \
+     -d '{
+       "kiosk_id": "1001",
+       "anchor_product_id": "5000",
+       "limit": 5,
+       "category_filter": "Bakery"
+     }'
+
+**Response (Success 200):**
+
+.. code-block:: json
+
+   {
+     "status": "success",
+     "request_id": "req_abc12345",
+     "kiosk_id": "1001",
+     "anchor_product_id": "5000",
+     "recommendations": [
+       {
+         "product_id": "5001",
+         "product_name": "Bread",
+         "category": "Bakery",
+         "price": 2.99,
+         "score": 0.956,
+         "reason": "model"
+       },
+       {
+         "product_id": "5002",
+         "product_name": "Butter",
+         "category": "Dairy",
+         "price": 3.49,
+         "score": 0.923,
+         "reason": "model"
+       },
+       {
+         "product_id": "5003",
+         "product_name": "Cheese",
+         "category": "Dairy",
+         "price": 4.99,
+         "score": 0.891,
+         "reason": "model"
+       },
+       {
+         "product_id": "7001",
+         "product_name": "Yogurt",
+         "category": "Dairy",
+         "price": 2.49,
+         "score": 0.450,
+         "reason": "category_popular"
+       },
+       {
+         "product_id": "1001",
+         "product_name": "Coffee",
+         "category": "Beverages",
+         "price": 5.99,
+         "score": 0.320,
+         "reason": "global_popular"
+       }
+     ],
+     "fallback_level": 1,
+     "execution_time_ms": 1.23
+   }
+
+**Response Fields:**
+
++---------------------+--------+---------------------------------------+
+| Field               | Type   | Description                           |
++=====================+========+=======================================+
+| status              | string | "success" or "error"                  |
++---------------------+--------+---------------------------------------+
+| request_id          | string | Unique request ID for logging         |
++---------------------+--------+---------------------------------------+
+| kiosk_id            | string | Input kiosk_id                        |
++---------------------+--------+---------------------------------------+
+| anchor_product_id   | string | Input anchor_product_id               |
++---------------------+--------+---------------------------------------+
+| recommendations     | array  | Array of recommended products         |
++---------------------+--------+---------------------------------------+
+| fallback_level      | int    | 1-4 (1=model, 4=global_popular)       |
++---------------------+--------+---------------------------------------+
+| execution_time_ms   | float  | How long request took (milliseconds)  |
++---------------------+--------+---------------------------------------+
+
+**Recommendation Object:**
+
++------------------+--------+---------------------------------------+
+| Field            | Type   | Description                           |
++==================+========+=======================================+
+| product_id       | string | Item ID                               |
++------------------+--------+---------------------------------------+
+| product_name     | string | Product name                          |
++------------------+--------+---------------------------------------+
+| category         | string | Product category                      |
++------------------+--------+---------------------------------------+
+| price            | float  | Product price (USD)                   |
++------------------+--------+---------------------------------------+
+| score            | float  | Model confidence (0-1)                |
++------------------+--------+---------------------------------------+
+| reason           | string | Why recommended (see below)           |
++------------------+--------+---------------------------------------+
+
+**Reason values:**
+
+.. code-block:: text
+
+   "model"           — Main LightGBM ranking model
+   "mba"             — Market Basket Analysis (association rules)
+   "category_popular" — Popular items in anchor's category
+   "global_popular"  — Globally popular items
+
+Error Responses
+^^^^^^^^^^^^^^^
+
+**400 Bad Request:**
+
+.. code-block:: json
+
+   {
+     "status": "error",
+     "error": "Missing kiosk_id or anchor_product_id",
+     "request_id": "req_abc12345"
+   }
+
+**400 Invalid Parameters:**
+
+.. code-block:: json
+
+   {
+     "status": "error",
+     "error": "limit must be between 1 and 20",
+     "request_id": "req_abc12345"
+   }
+
+**404 Not Found:**
+
+.. code-block:: json
+
+   {
+     "status": "error",
+     "error": "kiosk_id 99999 not found in catalog",
+     "request_id": "req_abc12345"
+   }
+
+**500 Internal Server Error:**
+
+.. code-block:: json
+
+   {
+     "status": "error",
+     "error": "Internal server error",
+     "request_id": "req_abc12345"
+   }
+
+Health and Status
+-----------------
+
+GET /health
+^^^^^^^^^^^
+
+Check API health.
+
+**Response (200):**
+
+.. code-block:: json
+
+   {
+     "status": "healthy",
+     "timestamp": "2025-01-15T10:30:00Z",
+     "model_version": "v1.0",
+     "predictions_loaded": true
+   }
+
+GET /metrics
+^^^^^^^^^^^^
+
+Get metrics for the last hour.
+
+**Response (200):**
+
+.. code-block:: json
+
+   {
+     "total_requests": 1000,
+     "avg_latency_ms": 1.23,
+     "p99_latency_ms": 5.67,
+     "error_rate": 0.001,
+     "fallback_distribution": {
+       "model": 0.85,
+       "mba": 0.10,
+       "category_popular": 0.04,
+       "global_popular": 0.01
+     }
+   }
+
+Python Client
+-------------
+
+**Installation:**
+
+.. code-block:: bash
+
+   pip install yom-recommendations-client
+
+**Usage:**
+
+.. code-block:: python
+
+   from yom_recommendations import YOMClient
+   
+   client = YOMClient(
+       api_url="https://api.yom.example.com",
+       api_key="your_api_key"  # optional
+   )
+------------------
+
+**Base URL:**
+
+.. code-block:: text
+
+   Production: https://xxxxx.execute-api.us-east-1.amazonaws.com/prod/recommend
+   Staging: https://xxxxx.execute-api.us-east-1.amazonaws.com/staging/recommend
+   Local: http://localhost:8000/recommend
+
+POST /recommend
+^^^^^^^^^^^^^^^
+
+Получить рекомендации для товаров.
+
+**Request:**
+
+.. code-block:: json
+
+   {
+     "kiosk_id": "1001",
+     "anchor_product_id": "5000",
+     "limit": 5,
+     "exclude_products": ["5001", "5002"],
+     "category_filter": null
+   }
+
+**Parameters:**
+
++--------------------+----------+----------+--------------------------+
+| Параметр           | Тип      | Default  | Описание                 |
++====================+==========+==========+==========================+
+| kiosk_id           | string   | required | ID точки продажи (касса) |
++--------------------+----------+----------+--------------------------+
+| anchor_product_id  | string   | required | ID якорного товара       |
++--------------------+----------+----------+--------------------------+
+| limit              | integer  | 5        | Сколько товаров вернуть  |
+|                    |          |          | (max: 20)                |
++--------------------+----------+----------+--------------------------+
+| exclude_products   | array    | []       | Товары не рекомендовать  |
++--------------------+----------+----------+--------------------------+
+| category_filter    | string   | null     | Фильтр по категории      |
++--------------------+----------+----------+--------------------------+
+
+**Examples:**
+
+**Простой запрос:**
+
+.. code-block:: bash
+
+   curl -X POST https://api.yom.example.com/recommend \
+     -H "Content-Type: application/json" \
+     -d '{
+       "kiosk_id": "1001",
+       "anchor_product_id": "5000",
+       "limit": 5
+     }'
+
+**С исключениями:**
+
+.. code-block:: bash
+
+   curl -X POST https://api.yom.example.com/recommend \
+     -H "Content-Type: application/json" \
+     -d '{
+       "kiosk_id": "1001",
+       "anchor_product_id": "5000",
+       "limit": 5,
+       "exclude_products": ["5001", "5002"]
+     }'
+
+**С фильтром категории:**
+
+.. code-block:: bash
+
+   curl -X POST https://api.yom.example.com/recommend \
+     -H "Content-Type: application/json" \
+     -d '{
+       "kiosk_id": "1001",
+       "anchor_product_id": "5000",
+       "limit": 5,
+       "category_filter": "Bakery"
+     }'
+
+**Response (Success 200):**
+
+.. code-block:: json
+
+   {
+     "status": "success",
+     "request_id": "req_abc12345",
+     "kiosk_id": "1001",
+     "anchor_product_id": "5000",
+     "recommendations": [
+       {
+         "product_id": "5001",
+         "product_name": "Bread",
+         "category": "Bakery",
+         "price": 2.99,
+         "score": 0.956,
+         "reason": "model"
+       },
+       {
+         "product_id": "5002",
+         "product_name": "Butter",
+         "category": "Dairy",
+         "price": 3.49,
+         "score": 0.923,
+         "reason": "model"
+       },
+       {
+         "product_id": "5003",
+         "product_name": "Cheese",
+         "category": "Dairy",
+         "price": 4.99,
+         "score": 0.891,
+         "reason": "model"
+       },
+       {
+         "product_id": "7001",
+         "product_name": "Yogurt",
+         "category": "Dairy",
+         "price": 2.49,
+         "score": 0.450,
+         "reason": "category_popular"
+       },
+       {
+         "product_id": "1001",
+         "product_name": "Coffee",
+         "category": "Beverages",
+         "price": 5.99,
+         "score": 0.320,
+         "reason": "global_popular"
+       }
+     ],
+     "fallback_level": 1,
+     "execution_time_ms": 1.23
+   }
+
+**Response Fields:**
+
++---------------------+--------+---------------------------------------+
+| Поле                | Тип    | Описание                              |
++=====================+========+=======================================+
+| status              | string | "success" или "error"                 |
++---------------------+--------+---------------------------------------+
+| request_id          | string | Unique request ID для логирования     |
++---------------------+--------+---------------------------------------+
+| kiosk_id            | string | Input kiosk_id                        |
++---------------------+--------+---------------------------------------+
+| anchor_product_id   | string | Input anchor_product_id               |
++---------------------+--------+---------------------------------------+
+| recommendations     | array  | Array of recommended products         |
++---------------------+--------+---------------------------------------+
+| fallback_level      | int    | 1-4 (1=model, 4=global_popular)       |
++---------------------+--------+---------------------------------------+
+| execution_time_ms   | float  | How long request took (milliseconds)  |
++---------------------+--------+---------------------------------------+
+
+**Recommendation Object:**
+
++------------------+--------+---------------------------------------+
+| Поле             | Тип    | Описание                              |
++==================+========+=======================================+
+| product_id       | string | ID товара                             |
++------------------+--------+---------------------------------------+
+| product_name     | string | Название товара                       |
++------------------+--------+---------------------------------------+
+| category         | string | Категория товара                      |
++------------------+--------+---------------------------------------+
+| price            | float  | Цена товара (USD)                     |
++------------------+--------+---------------------------------------+
+| score            | float  | Model confidence (0-1)                |
++------------------+--------+---------------------------------------+
+| reason           | string | Why recommended (see below)           |
++------------------+--------+---------------------------------------+
+
+**Reason values:**
+
+.. code-block:: text
+
+   "model"           — Основная модель LightGBM ранжирования
+   "mba"             — Market Basket Analysis (правила ассоциаций)
+   "category_popular" — Популярные товары в категории якоря
+   "global_popular"  — Глобально популярные товары
+
+Error Responses
+^^^^^^^^^^^^^^^
+
+**400 Bad Request:**
+
+.. code-block:: json
+
+   {
+     "status": "error",
+     "error": "Missing kiosk_id or anchor_product_id",
+     "request_id": "req_abc12345"
+   }
+
+**400 Invalid Parameters:**
+
+.. code-block:: json
+
+   {
+     "status": "error",
+     "error": "limit must be between 1 and 20",
+     "request_id": "req_abc12345"
+   }
+
+**404 Not Found:**
+
+.. code-block:: json
+
+   {
+     "status": "error",
+     "error": "kiosk_id 99999 not found in catalog",
+     "request_id": "req_abc12345"
+   }
+
+**500 Internal Server Error:**
+
+.. code-block:: json
+
+   {
+     "status": "error",
+     "error": "Internal server error",
+     "request_id": "req_abc12345"
+   }
+
+Здоровье и статус
+------------------
+
+GET /health
+^^^^^^^^^^^
+
+Проверить здоровье API.
+
+**Response (200):**
+
+.. code-block:: json
+
+   {
+     "status": "healthy",
+     "timestamp": "2025-01-15T10:30:00Z",
+     "model_version": "v1.0",
+     "predictions_loaded": true
+   }
+
+GET /metrics
+^^^^^^^^^^^^
+
+Получить метрики за последний час.
+
+**Response (200):**
+
+.. code-block:: json
+
+   {
+     "total_requests": 1000,
+     "avg_latency_ms": 1.23,
+     "p99_latency_ms": 5.67,
+     "error_rate": 0.001,
+     "fallback_distribution": {
+       "model": 0.85,
+       "mba": 0.10,
+       "category_popular": 0.04,
+       "global_popular": 0.01
+     }
+   }
+
+Python Client
+-------------
+
+**Installation:**
+
+.. code-block:: bash
+
+   pip install yom-recommendations-client
+
+**Usage:**
+
+.. code-block:: python
+
+   from yom_recommendations import YOMClient
+   
+   client = YOMClient(
+       api_url="https://api.yom.example.com",
+       api_key="your_api_key"  # optional
+   )
+   
+   # Get recommendations
+   result = client.get_recommendations(
+       kiosk_id="1001",
+       anchor_product_id="5000",
+       limit=5
+   )
+   
+   print(f"Got {len(result['recommendations'])} recommendations")
+   for rec in result['recommendations']:
+       print(f"  - {rec['product_name']} (score: {rec['score']})")
+
+cURL Examples
+-------------
+
+**Basic request:**
+
+.. code-block:: bash
+
+   curl -X POST https://api.yom.example.com/recommend \
+     -H "Content-Type: application/json" \
+     -d '{
+       "kiosk_id": "1001",
+       "anchor_product_id": "5000",
+       "limit": 3
+     }'
+
+**With authentication:**
+
+.. code-block:: bash
+
+   curl -X POST https://api.yom.example.com/recommend \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Bearer YOUR_API_KEY" \
+     -d '{
+       "kiosk_id": "1001",
+       "anchor_product_id": "5000"
+     }'
+
+**With exclude list:**
+
+.. code-block:: bash
+
+   curl -X POST https://api.yom.example.com/recommend \
+     -H "Content-Type: application/json" \
+     -d '{
+       "kiosk_id": "1001",
+       "anchor_product_id": "5000",
+       "exclude_products": ["5001", "5002", "5003"]
+     }'
+
+**Batch request (multiple kiosks):**
+
+.. code-block:: bash
+
+   for kiosk in 1001 1002 1003; do
+     curl -X POST https://api.yom.example.com/recommend \
+       -H "Content-Type: application/json" \
+       -d '{"kiosk_id": "'$kiosk'", "anchor_product_id": "5000"}'
+   done
+
+JavaScript Example
+------------------
+
+.. code-block:: javascript
+
+   const apiUrl = 'https://api.yom.example.com/recommend';
+   
+   async function getRecommendations(kioskId, anchorProductId, limit = 5) {
+       const response = await fetch(apiUrl, {
+           method: 'POST',
+           headers: {
+               'Content-Type': 'application/json',
+           },
+           body: JSON.stringify({
+               kiosk_id: kioskId,
+               anchor_product_id: anchorProductId,
+               limit: limit
+           })
+       });
+       
+       const data = await response.json();
+       
+       if (data.status !== 'success') {
+           throw new Error(data.error);
+       }
+       
+       return data.recommendations;
+   }
+   
+   // Usage
+   getRecommendations('1001', '5000', 5)
+       .then(recommendations => {
+           recommendations.forEach(rec => {
+               console.log(`${rec.product_name}: $${rec.price}`);
+           });
+       })
+       .catch(error => console.error('Error:', error));
+
+Rate Limiting
+-------------
+
+API имеет rate limits для предотвращения abuse:
+
+.. code-block:: text
+
+   Per-IP rate limit: 1000 requests per minute
+   Per-API-key limit: 10000 requests per minute
+
+**Response headers при rate limit:**
+
+.. code-block:: text
+
+   X-RateLimit-Limit: 1000
+   X-RateLimit-Remaining: 999
+   X-RateLimit-Reset: 1610700000
+   
+   429 Too Many Requests
+
+**Backoff strategy:**
+
+.. code-block:: python
+
+   import time
+   import requests
+   
+   def backoff_request(url, max_retries=5):
+       for attempt in range(max_retries):
+           try:
+               response = requests.post(url)
+               if response.status_code == 429:
+                   wait_time = 2 ** attempt  # Exponential backoff
+                   print(f"Rate limited, waiting {wait_time}s...")
+                   time.sleep(wait_time)
+                   continue
+               return response
+           except Exception as e:
+               print(f"Error: {e}")
+       raise Exception("Max retries exceeded")
+
+Versioning
+----------
+
+API версионируется через URL:
+
+.. code-block:: text
+
+   /v1/recommend    ← Current version
+   /v2/recommend    ← Future version (when available)
+
+**Deprecation policy:**
+
+- Старая версия поддерживается 6 месяцев после релиза новой
+- Уведомления за месяц до deprecation
+- Migration guide при релизе новой версии
+
+Что дальше?
+-----------
+
+- :doc:`serving` — как API реализован
+- :doc:`troubleshooting` — решение проблем при использовании API

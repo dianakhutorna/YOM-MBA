@@ -1,0 +1,230 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quick Start &mdash; YOM Bundle Recommender System 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+    <link rel="canonical" href="https://yom-recommender.readthedocs.io/quickstart.html"/>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="System Architecture" href="architecture.html" />
+    <link rel="prev" title="YOM Bundle Recommender System" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #2862a3" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            YOM Bundle Recommender System
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Documentation:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Quick Start</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#why-this-order">Why this order</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#requirements">Requirements</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#setup">Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step-1-training">Step 1 — Training</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step-2-batch-scoring">Step 2 — Batch scoring</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step-3-local-api-run-development">Step 3 — Local API run (development)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#verification">Verification</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#optional-quality-checks">Optional quality checks</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">System Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="data_flow.html">Data Flow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="training.html">Model Training</a></li>
+<li class="toctree-l1"><a class="reference internal" href="model.html">Model Artifacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="model_code.html">Model Code Walkthrough</a></li>
+<li class="toctree-l1"><a class="reference internal" href="inference.html">Batch Scoring (Inference)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="serving.html">Serving Layer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="fallback.html">Fallback System</a></li>
+<li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="file_reference.html">File Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing and Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="deployment.html">Deployment</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #2862a3" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">YOM Bundle Recommender System</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Quick Start</li>
+      <li class="wy-breadcrumbs-aside">
+              <a href="https://github.com/dianakhutorna/bundle_recommender/blob/final/docs/source/quickstart.rst" class="fa fa-github"> Edit on GitHub</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="quick-start">
+<h1>Quick Start<a class="headerlink" href="#quick-start" title="Link to this heading"></a></h1>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading"></a></h2>
+<p>This quick start follows the documented offline pipeline:</p>
+<ol class="arabic simple">
+<li><p>Train model</p></li>
+<li><p>Generate batch predictions</p></li>
+<li><p>Serve recommendations via API</p></li>
+</ol>
+</section>
+<section id="why-this-order">
+<h2>Why this order<a class="headerlink" href="#why-this-order" title="Link to this heading"></a></h2>
+<p>Serving depends on artifacts generated by the first two stages.
+The system does not perform online ML inference at request time.</p>
+</section>
+<section id="requirements">
+<h2>Requirements<a class="headerlink" href="#requirements" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Python 3.11+</p></li>
+<li><p>Input files prepared:</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">training/data/external/commerces.csv</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">training/data/external/products_v2.csv</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">training/data/raw/*.csv</span></code></p></li>
+</ul>
+</li>
+</ul>
+</section>
+<section id="setup">
+<h2>Setup<a class="headerlink" href="#setup" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>venv
+<span class="nb">source</span><span class="w"> </span>venv/bin/activate
+pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+</pre></div>
+</div>
+</section>
+<section id="step-1-training">
+<h2>Step 1 — Training<a class="headerlink" href="#step-1-training" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>./venv/bin/python<span class="w"> </span>-m<span class="w"> </span>training.src.scripts.run_training_pipeline<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--config<span class="w"> </span>training/configs/training_pipeline.yaml
+</pre></div>
+</div>
+<p>Main outputs:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">training/models/lgbm_ranker.txt</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">training/models/lgbm_ranker.features.json</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">training/data/interim/orders_sample.parquet</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">logs/training_*.log</span></code></p></li>
+</ul>
+</section>
+<section id="step-2-batch-scoring">
+<h2>Step 2 — Batch scoring<a class="headerlink" href="#step-2-batch-scoring" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>./venv/bin/python<span class="w"> </span>-m<span class="w"> </span>training.src.scripts.generate_predictions<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--config<span class="w"> </span>training/configs/generate_predictions.yaml
+</pre></div>
+</div>
+<p>Main outputs in <code class="docutils literal notranslate"><span class="pre">training/data/interim/</span></code>:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">predictions.parquet</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">popularity_fallback.parquet</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">category_fallback.parquet</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">global_fallback.parquet</span></code></p></li>
+</ul>
+</section>
+<section id="step-3-local-api-run-development">
+<h2>Step 3 — Local API run (development)<a class="headerlink" href="#step-3-local-api-run-development" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>./venv/bin/python<span class="w"> </span>-m<span class="w"> </span>training.src.scripts.serve_recommendations_api
+</pre></div>
+</div>
+<p>Endpoints:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/health</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/recommendations</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/recommendations/multi</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/docs</span></code></p></li>
+</ul>
+<p>Recommendation request format:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>GET /recommendations?kioskId=&lt;kiosk_id&gt;&amp;anchorId=&lt;anchor_product_id&gt;&amp;limit=&lt;N&gt;
+</pre></div>
+</div>
+</section>
+<section id="verification">
+<h2>Verification<a class="headerlink" href="#verification" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span>http://localhost:8000/health
+curl<span class="w"> </span><span class="s2">&quot;http://localhost:8000/recommendations?kioskId=&lt;kiosk_id&gt;&amp;anchorId=&lt;anchor_id&gt;&amp;limit=10&quot;</span>
+</pre></div>
+</div>
+</section>
+<section id="optional-quality-checks">
+<h2>Optional quality checks<a class="headerlink" href="#optional-quality-checks" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>./venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>training/tests/<span class="w"> </span>-q
+./venv/bin/python<span class="w"> </span>-m<span class="w"> </span>training.src.scripts.check_personalization<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--config<span class="w"> </span>training/configs/training_pipeline.yaml<span class="w"> </span>--top-k<span class="w"> </span><span class="m">5</span><span class="w"> </span>--sample-kiosks<span class="w"> </span><span class="m">300</span>
+./venv/bin/python<span class="w"> </span>-m<span class="w"> </span>training.src.scripts.check_new_vs_repeat<span class="w"> </span>--top-k<span class="w"> </span><span class="m">5</span><span class="w"> </span>--sample-kiosks<span class="w"> </span><span class="m">200</span>
+</pre></div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="YOM Bundle Recommender System" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="architecture.html" class="btn btn-neutral float-right" title="System Architecture" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Diana Khutorna.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(false);
+      });
+  </script> 
+
+</body>
+</html>

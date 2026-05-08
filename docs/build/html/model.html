@@ -1,116 +1,187 @@
+
+
 <!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-<html lang="en" data-content_root="./">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Model Artifacts &mdash; YOM Bundle Recommender System 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
-    <title>Models &#8212; YOM Recommender 1.0 documentation</title>
-    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
-    <link rel="stylesheet" type="text/css" href="_static/basic.css?v=b08954a9" />
-    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
-    <script src="_static/documentation_options.js?v=f2a433a1"></script>
-    <script src="_static/doctools.js?v=fd6eb6e6"></script>
-    <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+  
+    <link rel="canonical" href="https://yom-recommender.readthedocs.io/model.html"/>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="prev" title="YOM Recommender documentation" href="index.html" />
-   
-  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
-  
+    <link rel="next" title="Batch Scoring (Inference)" href="inference.html" />
+    <link rel="prev" title="Model Training" href="training.html" /> 
+</head>
 
-  
-  
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #2862a3" >
 
-  </head><body>
-  
-
-    <div class="document">
-      <div class="documentwrapper">
-        <div class="bodywrapper">
           
-
-          <div class="body" role="main">
-            
-  <section id="models">
-<h1>Models<a class="headerlink" href="#models" title="Link to this heading">¶</a></h1>
-<section id="model-a">
-<h2>Model A<a class="headerlink" href="#model-a" title="Link to this heading">¶</a></h2>
-</section>
-<section id="model-b">
-<h2>Model B<a class="headerlink" href="#model-b" title="Link to this heading">¶</a></h2>
-</section>
-</section>
-
-
-          </div>
           
-        </div>
-      </div>
-      <div class="sphinxsidebar" role="navigation" aria-label="Main">
-        <div class="sphinxsidebarwrapper">
-<h1 class="logo"><a href="index.html">YOM Recommender</a></h1>
-
-
-
-
-
-
-
-
-
-<search id="searchbox" style="display: none" role="search">
-    <div class="searchformwrapper">
-    <form class="search" action="search.html" method="get">
-      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
-      <input type="submit" value="Go" />
-    </form>
-    </div>
-</search>
-<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
-<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+          <a href="index.html" class="icon icon-home">
+            YOM Bundle Recommender System
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Documentation:</span></p>
 <ul class="current">
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Models</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#model-a">Model A</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#model-b">Model B</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">System Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="training.html">Model Training</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Model Artifacts</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#main-ranking-model">Main ranking model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#feature-metadata">Feature metadata</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#batch-inference-artifacts">Batch inference artifacts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#why-model-design-is-structured-this-way">Why model design is structured this way</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="inference.html">Batch Scoring (Inference)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="serving.html">Serving Layer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="deployment.html">Deployment</a></li>
 </ul>
-
-<div class="relations">
-<h3>Related Topics</h3>
-<ul>
-  <li><a href="index.html">Documentation overview</a><ul>
-      <li>Previous: <a href="index.html" title="previous chapter">YOM Recommender documentation</a></li>
-  </ul></li>
-</ul>
-</div>
-
-
-
-
-
-
-
 
         </div>
       </div>
-      <div class="clearer"></div>
-    </div>
-    <div class="footer">
-      &#169;2026, Diana Khutorna.
-      
-      |
-      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 9.0.4</a>
-      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
-      
-      |
-      <a href="_sources/model.rst.txt"
-          rel="nofollow">Page source</a>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #2862a3" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">YOM Bundle Recommender System</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Model Artifacts</li>
+      <li class="wy-breadcrumbs-aside">
+              <a href="https://github.com/dianakhutorna/bundle_recommender/blob/final/docs/source/model.rst" class="fa fa-github"> Edit on GitHub</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="model-artifacts">
+<h1>Model Artifacts<a class="headerlink" href="#model-artifacts" title="Link to this heading"></a></h1>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading"></a></h2>
+<p>This page documents only model artifacts and behavior described in <code class="docutils literal notranslate"><span class="pre">README.md</span></code> and <code class="docutils literal notranslate"><span class="pre">documentation.md</span></code>.</p>
+</section>
+<section id="main-ranking-model">
+<h2>Main ranking model<a class="headerlink" href="#main-ranking-model" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Artifact: <code class="docutils literal notranslate"><span class="pre">training/models/lgbm_ranker.txt</span></code></p></li>
+<li><p>Method: LightGBM with <code class="docutils literal notranslate"><span class="pre">lambdarank</span></code> objective</p></li>
+<li><p>Task: rank candidate products for each query group <code class="docutils literal notranslate"><span class="pre">(kiosk,</span> <span class="pre">anchor)</span></code></p></li>
+</ul>
+<p>Documented hyperparameters include:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">learning_rate:</span> <span class="pre">0.02</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">num_leaves:</span> <span class="pre">15</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">max_depth:</span> <span class="pre">5</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">min_data_in_leaf:</span> <span class="pre">1000</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">min_gain_to_split:</span> <span class="pre">0.5</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">lambda_l1:</span> <span class="pre">2.0</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">lambda_l2:</span> <span class="pre">10.0</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">feature_fraction:</span> <span class="pre">0.55</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">bagging_fraction:</span> <span class="pre">0.6</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">bagging_freq:</span> <span class="pre">1</span></code></p></li>
+</ul>
+</section>
+<section id="feature-metadata">
+<h2>Feature metadata<a class="headerlink" href="#feature-metadata" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Artifact: <code class="docutils literal notranslate"><span class="pre">training/models/lgbm_ranker.features.json</span></code></p></li>
+<li><p>Purpose: define the exact feature column list and order used for training/prediction alignment</p></li>
+</ul>
+<p>The documented model uses 8 features (see <a class="reference internal" href="features.html"><span class="doc">Features</span></a>).</p>
+</section>
+<section id="batch-inference-artifacts">
+<h2>Batch inference artifacts<a class="headerlink" href="#batch-inference-artifacts" title="Link to this heading"></a></h2>
+<p>Batch scoring produces four serving artifacts:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">training/data/interim/predictions.parquet</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">training/data/interim/popularity_fallback.parquet</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">training/data/interim/category_fallback.parquet</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">training/data/interim/global_fallback.parquet</span></code></p></li>
+</ul>
+<p>These files are loaded by the serving layer at startup.</p>
+</section>
+<section id="why-model-design-is-structured-this-way">
+<h2>Why model design is structured this way<a class="headerlink" href="#why-model-design-is-structured-this-way" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">lambdarank</span></code> is used because the objective is top-K ranking per query, consistent with rank metrics used in evaluation.</p></li>
+<li><p>The model is trained offline and applied in batch to avoid per-request online inference.</p></li>
+<li><p>Serving uses precomputed artifacts and fallback levels to keep latency low and maintain recommendation coverage.</p></li>
+</ul>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="training.html"><span class="doc">Model Training</span></a></p></li>
+<li><p><a class="reference internal" href="inference.html"><span class="doc">Batch Scoring (Inference)</span></a></p></li>
+<li><p><a class="reference internal" href="serving.html"><span class="doc">Serving Layer</span></a></p></li>
+<li><p><a class="reference internal" href="features.html"><span class="doc">Features</span></a></p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="training.html" class="btn btn-neutral float-left" title="Model Training" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="inference.html" class="btn btn-neutral float-right" title="Batch Scoring (Inference)" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
-    
+  <hr/>
 
-    
-  </body>
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Diana Khutorna.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(false);
+      });
+  </script> 
+
+</body>
 </html>

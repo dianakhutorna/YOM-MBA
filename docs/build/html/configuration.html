@@ -1,0 +1,297 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Configuration &mdash; YOM Bundle Recommender System 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+    <link rel="canonical" href="https://yom-recommender.readthedocs.io/configuration.html"/>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Testing and Analysis" href="testing.html" />
+    <link rel="prev" title="File Reference" href="file_reference.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #2862a3" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            YOM Bundle Recommender System
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Documentation:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">System Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="data_flow.html">Data Flow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="training.html">Model Training</a></li>
+<li class="toctree-l1"><a class="reference internal" href="model.html">Model Artifacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="model_code.html">Model Code Walkthrough</a></li>
+<li class="toctree-l1"><a class="reference internal" href="inference.html">Batch Scoring (Inference)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="serving.html">Serving Layer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="fallback.html">Fallback System</a></li>
+<li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="file_reference.html">File Reference</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Configuration</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#training-config-reference">Training config reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#inference-config-reference">Inference config reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#operational-notes">Operational notes</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing and Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="deployment.html">Deployment</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #2862a3" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">YOM Bundle Recommender System</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Configuration</li>
+      <li class="wy-breadcrumbs-aside">
+              <a href="https://github.com/dianakhutorna/bundle_recommender/blob/final/docs/source/configuration.rst" class="fa fa-github"> Edit on GitHub</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="configuration">
+<h1>Configuration<a class="headerlink" href="#configuration" title="Link to this heading"></a></h1>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading"></a></h2>
+<p>Runtime behavior is controlled by YAML configs in <code class="docutils literal notranslate"><span class="pre">training/configs</span></code>.</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">training_pipeline.yaml</span></code>: training pipeline</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">generate_predictions.yaml</span></code>: batch scoring pipeline</p></li>
+</ul>
+</section>
+<section id="training-config-reference">
+<h2>Training config reference<a class="headerlink" href="#training-config-reference" title="Link to this heading"></a></h2>
+<p>Main keys from <code class="docutils literal notranslate"><span class="pre">training/configs/training_pipeline.yaml</span></code>:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head"><p>Value / Default</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">raw_paths</span></code></p></td>
+<td><p>list of raw CSV paths</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">n_rows</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">3000000</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sample_position</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tail</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">train_ratio</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0.8</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">val_ratio</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0.1</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">test_ratio</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0.1</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">train_label_ratio</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0.3</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">min_cooc</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">2</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">min_lift</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">1.2</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">top_k</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">100</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">top_k_train</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">100</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">label_window_days</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">7</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">min_cooc_label</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">1</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">label_kiosk_batch_size</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0</span></code> (auto)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_neg_per_group</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">20</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_eval_queries</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">50000</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">eval_ks</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[5,10,20,50]</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">predict_batch_size</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">200000</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">num_boost_round</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">2000</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">early_stopping_rounds</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">100</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">eval_log_path</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">logs/training_eval_curve.csv</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p>Documented LightGBM parameter block:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">lgbm_params</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">learning_rate</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.02</span>
+<span class="w">  </span><span class="nt">num_leaves</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">15</span>
+<span class="w">  </span><span class="nt">max_depth</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span>
+<span class="w">  </span><span class="nt">min_data_in_leaf</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1000</span>
+<span class="w">  </span><span class="nt">min_gain_to_split</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.5</span>
+<span class="w">  </span><span class="nt">lambda_l1</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2.0</span>
+<span class="w">  </span><span class="nt">lambda_l2</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10.0</span>
+<span class="w">  </span><span class="nt">feature_fraction</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.55</span>
+<span class="w">  </span><span class="nt">bagging_fraction</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.6</span>
+<span class="w">  </span><span class="nt">bagging_freq</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="w">  </span><span class="nt">seed</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">42</span>
+</pre></div>
+</div>
+</section>
+<section id="inference-config-reference">
+<h2>Inference config reference<a class="headerlink" href="#inference-config-reference" title="Link to this heading"></a></h2>
+<p>Main keys from <code class="docutils literal notranslate"><span class="pre">training/configs/generate_predictions.yaml</span></code>:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head"><p>Value / Default</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">orders_path</span></code></p></td>
+<td><p>interim parquet path</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">products_path</span></code></p></td>
+<td><p>products CSV path</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">commerces_path</span></code></p></td>
+<td><p>commerces CSV path</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model_path</span></code></p></td>
+<td><p>model artifact path</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">predictions_path</span></code></p></td>
+<td><p>predictions parquet path</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">popularity_path</span></code></p></td>
+<td><p>per-anchor fallback path</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">category_fallback_path</span></code></p></td>
+<td><p>category fallback path</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">global_fallback_path</span></code></p></td>
+<td><p>global fallback path</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">inference_last_n_days</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">90</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">inference_max_rows</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0</span></code> (unlimited)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">min_cooc</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">2</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">min_lift</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">1.2</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">top_k_candidates</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">50</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">catalog_top_k</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">30</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">predict_batch_size</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">200000</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">query_sample_n</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="operational-notes">
+<h2>Operational notes<a class="headerlink" href="#operational-notes" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Inference columns are aligned against <code class="docutils literal notranslate"><span class="pre">lgbm_ranker.features.json</span></code>.</p></li>
+<li><p>Missing inference features are filled with defaults by code.</p></li>
+<li><p>Numeric nulls are filled with <code class="docutils literal notranslate"><span class="pre">0</span></code>; categorical nulls with <code class="docutils literal notranslate"><span class="pre">__MISSING__</span></code>.</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="file_reference.html" class="btn btn-neutral float-left" title="File Reference" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="testing.html" class="btn btn-neutral float-right" title="Testing and Analysis" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Diana Khutorna.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(false);
+      });
+  </script> 
+
+</body>
+</html>

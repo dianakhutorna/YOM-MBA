@@ -1,0 +1,202 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>System Architecture &mdash; YOM Bundle Recommender System 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+    <link rel="canonical" href="https://yom-recommender.readthedocs.io/architecture.html"/>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Model Training" href="training.html" />
+    <link rel="prev" title="Quick Start" href="quickstart.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #2862a3" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            YOM Bundle Recommender System
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Documentation:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quick Start</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">System Architecture</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#stages">Stages</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#training">1) Training</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#batch-scoring">2) Batch scoring</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#serving">3) Serving</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#fallback-strategy">Fallback Strategy</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#core-files">Core Files</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="training.html">Model Training</a></li>
+<li class="toctree-l1"><a class="reference internal" href="model.html">Model Artifacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="inference.html">Batch Scoring (Inference)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="serving.html">Serving Layer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="deployment.html">Deployment</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #2862a3" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">YOM Bundle Recommender System</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">System Architecture</li>
+      <li class="wy-breadcrumbs-aside">
+              <a href="https://github.com/dianakhutorna/bundle_recommender/blob/final/docs/source/architecture.rst" class="fa fa-github"> Edit on GitHub</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="system-architecture">
+<h1>System Architecture<a class="headerlink" href="#system-architecture" title="Link to this heading"></a></h1>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading"></a></h2>
+<p>YOM Bundle Recommender is an offline ML system with three stages:</p>
+<ol class="arabic simple">
+<li><p>Training (monthly)</p></li>
+<li><p>Batch scoring (daily/weekly)</p></li>
+<li><p>Serving (AWS Lambda)</p></li>
+</ol>
+<p>Key principle: there is no online ML inference. Recommendations are pre-computed in batch for <code class="docutils literal notranslate"><span class="pre">(kiosk,</span> <span class="pre">anchor,</span> <span class="pre">candidate)</span></code> combinations, and serving performs dictionary lookup.</p>
+</section>
+<section id="stages">
+<h2>Stages<a class="headerlink" href="#stages" title="Link to this heading"></a></h2>
+<section id="training">
+<h3>1) Training<a class="headerlink" href="#training" title="Link to this heading"></a></h3>
+<p>Main flow:</p>
+<ul class="simple">
+<li><p>Load and preprocess raw orders</p></li>
+<li><p>Perform time-based split into train/validation/test</p></li>
+<li><p>Build baskets and MBA candidates</p></li>
+<li><p>Build feature table and labels</p></li>
+<li><p>Train LightGBM LambdaRank</p></li>
+<li><p>Save artifacts:</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">training/models/lgbm_ranker.txt</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">training/models/lgbm_ranker.features.json</span></code></p></li>
+</ul>
+</li>
+</ul>
+</section>
+<section id="batch-scoring">
+<h3>2) Batch scoring<a class="headerlink" href="#batch-scoring" title="Link to this heading"></a></h3>
+<p>Main flow:</p>
+<ul class="simple">
+<li><p>Load trained model and feature list</p></li>
+<li><p>Load recent orders window (90 days)</p></li>
+<li><p>Generate candidate products per anchor</p></li>
+<li><p>Build feature table and score candidates</p></li>
+<li><p>Keep top results per <code class="docutils literal notranslate"><span class="pre">(kiosk,</span> <span class="pre">anchor)</span></code></p></li>
+<li><p>Save parquet artifacts for serving</p></li>
+</ul>
+</section>
+<section id="serving">
+<h3>3) Serving<a class="headerlink" href="#serving" title="Link to this heading"></a></h3>
+<p>Main flow:</p>
+<ul class="simple">
+<li><p>Load parquet artifacts at startup</p></li>
+<li><p>Build in-memory index for lookup</p></li>
+<li><p>Serve recommendations through API</p></li>
+<li><p>Apply fallback chain when direct model prediction is unavailable</p></li>
+</ul>
+</section>
+</section>
+<section id="fallback-strategy">
+<h2>Fallback Strategy<a class="headerlink" href="#fallback-strategy" title="Link to this heading"></a></h2>
+<p>Serving uses a 4-level fallback:</p>
+<ol class="arabic simple">
+<li><p>Model predictions</p></li>
+<li><p>Per-anchor fallback</p></li>
+<li><p>Per-category fallback</p></li>
+<li><p>Global fallback</p></li>
+</ol>
+<p>This guarantees non-empty output coverage for known and unknown request combinations.</p>
+</section>
+<section id="core-files">
+<h2>Core Files<a class="headerlink" href="#core-files" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">training/src/pipelines/training.py</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">training/src/scripts/generate_predictions.py</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">training/src/scripts/serve_recommendations_api.py</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">training/src/scripts/lambda_handler.py</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">training/src/services/recommendation_service.py</span></code></p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="quickstart.html" class="btn btn-neutral float-left" title="Quick Start" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="training.html" class="btn btn-neutral float-right" title="Model Training" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Diana Khutorna.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(false);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,7 @@
+# Documentation build requirements for ReadTheDocs
+# Used by .readthedocs.yml
+
+sphinx>=5.0
+sphinx-rtd-theme>=1.0
+myst-parser>=0.18
+sphinx-autodoc-typehints>=1.18

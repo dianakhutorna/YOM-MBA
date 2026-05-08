@@ -1,0 +1,923 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>API Reference &mdash; YOM Bundle Recommender System 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+    <link rel="canonical" href="https://yom-recommender.readthedocs.io/api_reference.html"/>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Glossary" href="glossary.html" />
+    <link rel="prev" title="Troubleshooting" href="troubleshooting.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #2862a3" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            YOM Bundle Recommender System
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Documentation:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">System Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="training.html">Model Training</a></li>
+<li class="toctree-l1"><a class="reference internal" href="inference.html">Batch Scoring (Prediction Generation)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="serving.html">Serving (Recommendation Delivery)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration and Hyperparameters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="deployment.html">Production Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#main-endpoint">Main Endpoint</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#post-recommend">POST /recommend</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#error-responses">Error Responses</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#health-and-status">Health and Status</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#get-health">GET /health</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#get-metrics">GET /metrics</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#python-client">Python Client</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id1">POST /recommend</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id2">Error Responses</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id3">Здоровье и статус</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id4">GET /health</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id5">GET /metrics</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id6">Python Client</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#curl-examples">cURL Examples</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#javascript-example">JavaScript Example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#rate-limiting">Rate Limiting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#versioning">Versioning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id7">Что дальше?</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="glossary.html">Glossary</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #2862a3" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">YOM Bundle Recommender System</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">API Reference</li>
+      <li class="wy-breadcrumbs-aside">
+              <a href="https://github.com/dianakhutorna/bundle_recommender/blob/final/docs/source/api_reference.rst" class="fa fa-github"> Edit on GitHub</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="api-reference">
+<h1>API Reference<a class="headerlink" href="#api-reference" title="Link to this heading"></a></h1>
+<p>Complete description of all API endpoints and parameters.</p>
+<section id="main-endpoint">
+<h2>Main Endpoint<a class="headerlink" href="#main-endpoint" title="Link to this heading"></a></h2>
+<p><strong>Base URL:</strong></p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>Production: https://xxxxx.execute-api.us-east-1.amazonaws.com/prod/recommend
+Staging: https://xxxxx.execute-api.us-east-1.amazonaws.com/staging/recommend
+Local: http://localhost:8000/recommend
+</pre></div>
+</div>
+<section id="post-recommend">
+<h3>POST /recommend<a class="headerlink" href="#post-recommend" title="Link to this heading"></a></h3>
+<p>Get recommendations for products.</p>
+<p><strong>Request:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;kiosk_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1001&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;anchor_product_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;5000&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;limit&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;exclude_products&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;5001&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;5002&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;category_filter&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Parameters:</strong></p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Parameter</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>kiosk_id</p></td>
+<td><p>string</p></td>
+<td><p>required</p></td>
+<td><p>ID of point of sale</p></td>
+</tr>
+<tr class="row-odd"><td><p>anchor_product_id</p></td>
+<td><p>string</p></td>
+<td><p>required</p></td>
+<td><p>ID of anchor product</p></td>
+</tr>
+<tr class="row-even"><td><p>limit</p></td>
+<td><p>integer</p></td>
+<td><p>5</p></td>
+<td><p>How many items to return
+(max: 20)</p></td>
+</tr>
+<tr class="row-odd"><td><p>exclude_products</p></td>
+<td><p>array</p></td>
+<td><p>[]</p></td>
+<td><p>Products to exclude</p></td>
+</tr>
+<tr class="row-even"><td><p>category_filter</p></td>
+<td><p>string</p></td>
+<td><p>null</p></td>
+<td><p>Category filter</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Examples:</strong></p>
+<p><strong>Simple request:</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>https://api.yom.example.com/recommend<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{</span>
+<span class="s1">    &quot;kiosk_id&quot;: &quot;1001&quot;,</span>
+<span class="s1">    &quot;anchor_product_id&quot;: &quot;5000&quot;,</span>
+<span class="s1">    &quot;limit&quot;: 5</span>
+<span class="s1">  }&#39;</span>
+</pre></div>
+</div>
+<p><strong>With exclusions:</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>https://api.yom.example.com/recommend<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{</span>
+<span class="s1">    &quot;kiosk_id&quot;: &quot;1001&quot;,</span>
+<span class="s1">    &quot;anchor_product_id&quot;: &quot;5000&quot;,</span>
+<span class="s1">    &quot;limit&quot;: 5,</span>
+<span class="s1">    &quot;exclude_products&quot;: [&quot;5001&quot;, &quot;5002&quot;]</span>
+<span class="s1">  }&#39;</span>
+</pre></div>
+</div>
+<p><strong>With category filter:</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>https://api.yom.example.com/recommend<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{</span>
+<span class="s1">    &quot;kiosk_id&quot;: &quot;1001&quot;,</span>
+<span class="s1">    &quot;anchor_product_id&quot;: &quot;5000&quot;,</span>
+<span class="s1">    &quot;limit&quot;: 5,</span>
+<span class="s1">    &quot;category_filter&quot;: &quot;Bakery&quot;</span>
+<span class="s1">  }&#39;</span>
+</pre></div>
+</div>
+<p><strong>Response (Success 200):</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;request_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;req_abc12345&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;kiosk_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1001&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;anchor_product_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;5000&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;recommendations&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;product_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;5001&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;product_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Bread&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Bakery&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;price&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">2.99</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;score&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.956</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;reason&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;model&quot;</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;product_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;5002&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;product_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Butter&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Dairy&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;price&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">3.49</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;score&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.923</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;reason&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;model&quot;</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;product_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;5003&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;product_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Cheese&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Dairy&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;price&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">4.99</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;score&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.891</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;reason&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;model&quot;</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;product_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;7001&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;product_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Yogurt&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Dairy&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;price&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">2.49</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;score&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.450</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;reason&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;category_popular&quot;</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;product_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1001&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;product_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Coffee&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Beverages&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;price&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">5.99</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;score&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.320</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;reason&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;global_popular&quot;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;fallback_level&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;execution_time_ms&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.23</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Response Fields:</strong></p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>status</p></td>
+<td><p>string</p></td>
+<td><p>“success” or “error”</p></td>
+</tr>
+<tr class="row-odd"><td><p>request_id</p></td>
+<td><p>string</p></td>
+<td><p>Unique request ID for logging</p></td>
+</tr>
+<tr class="row-even"><td><p>kiosk_id</p></td>
+<td><p>string</p></td>
+<td><p>Input kiosk_id</p></td>
+</tr>
+<tr class="row-odd"><td><p>anchor_product_id</p></td>
+<td><p>string</p></td>
+<td><p>Input anchor_product_id</p></td>
+</tr>
+<tr class="row-even"><td><p>recommendations</p></td>
+<td><p>array</p></td>
+<td><p>Array of recommended products</p></td>
+</tr>
+<tr class="row-odd"><td><p>fallback_level</p></td>
+<td><p>int</p></td>
+<td><p>1-4 (1=model, 4=global_popular)</p></td>
+</tr>
+<tr class="row-even"><td><p>execution_time_ms</p></td>
+<td><p>float</p></td>
+<td><p>How long request took (milliseconds)</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Recommendation Object:</strong></p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>product_id</p></td>
+<td><p>string</p></td>
+<td><p>Item ID</p></td>
+</tr>
+<tr class="row-odd"><td><p>product_name</p></td>
+<td><p>string</p></td>
+<td><p>Product name</p></td>
+</tr>
+<tr class="row-even"><td><p>category</p></td>
+<td><p>string</p></td>
+<td><p>Product category</p></td>
+</tr>
+<tr class="row-odd"><td><p>price</p></td>
+<td><p>float</p></td>
+<td><p>Product price (USD)</p></td>
+</tr>
+<tr class="row-even"><td><p>score</p></td>
+<td><p>float</p></td>
+<td><p>Model confidence (0-1)</p></td>
+</tr>
+<tr class="row-odd"><td><p>reason</p></td>
+<td><p>string</p></td>
+<td><p>Why recommended (see below)</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Reason values:</strong></p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>&quot;model&quot;           — Main LightGBM ranking model
+&quot;mba&quot;             — Market Basket Analysis (association rules)
+&quot;category_popular&quot; — Popular items in anchor&#39;s category
+&quot;global_popular&quot;  — Globally popular items
+</pre></div>
+</div>
+</section>
+<section id="error-responses">
+<h3>Error Responses<a class="headerlink" href="#error-responses" title="Link to this heading"></a></h3>
+<p><strong>400 Bad Request:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;error&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Missing kiosk_id or anchor_product_id&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;request_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;req_abc12345&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>400 Invalid Parameters:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;error&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;limit must be between 1 and 20&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;request_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;req_abc12345&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>404 Not Found:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;error&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;kiosk_id 99999 not found in catalog&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;request_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;req_abc12345&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>500 Internal Server Error:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;error&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Internal server error&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;request_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;req_abc12345&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="health-and-status">
+<h2>Health and Status<a class="headerlink" href="#health-and-status" title="Link to this heading"></a></h2>
+<section id="get-health">
+<h3>GET /health<a class="headerlink" href="#get-health" title="Link to this heading"></a></h3>
+<p>Check API health.</p>
+<p><strong>Response (200):</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;healthy&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;timestamp&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2025-01-15T10:30:00Z&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;model_version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;v1.0&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;predictions_loaded&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="get-metrics">
+<h3>GET /metrics<a class="headerlink" href="#get-metrics" title="Link to this heading"></a></h3>
+<p>Get metrics for the last hour.</p>
+<p><strong>Response (200):</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;total_requests&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;avg_latency_ms&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.23</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;p99_latency_ms&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">5.67</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;error_rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.001</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;fallback_distribution&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.85</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;mba&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.10</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;category_popular&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.04</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;global_popular&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.01</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="python-client">
+<h2>Python Client<a class="headerlink" href="#python-client" title="Link to this heading"></a></h2>
+<p><strong>Installation:</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>yom-recommendations-client
+</pre></div>
+</div>
+<p><strong>Usage:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">yom_recommendations</span><span class="w"> </span><span class="kn">import</span> <span class="n">YOMClient</span>
+
+<span class="n">client</span> <span class="o">=</span> <span class="n">YOMClient</span><span class="p">(</span>
+    <span class="n">api_url</span><span class="o">=</span><span class="s2">&quot;https://api.yom.example.com&quot;</span><span class="p">,</span>
+    <span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your_api_key&quot;</span>  <span class="c1"># optional</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<hr class="docutils" />
+<p><strong>Base URL:</strong></p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>Production: https://xxxxx.execute-api.us-east-1.amazonaws.com/prod/recommend
+Staging: https://xxxxx.execute-api.us-east-1.amazonaws.com/staging/recommend
+Local: http://localhost:8000/recommend
+</pre></div>
+</div>
+<section id="id1">
+<h3>POST /recommend<a class="headerlink" href="#id1" title="Link to this heading"></a></h3>
+<p>Получить рекомендации для товаров.</p>
+<p><strong>Request:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;kiosk_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1001&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;anchor_product_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;5000&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;limit&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;exclude_products&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;5001&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;5002&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;category_filter&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Parameters:</strong></p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Параметр</p></th>
+<th class="head"><p>Тип</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Описание</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>kiosk_id</p></td>
+<td><p>string</p></td>
+<td><p>required</p></td>
+<td><p>ID точки продажи (касса)</p></td>
+</tr>
+<tr class="row-odd"><td><p>anchor_product_id</p></td>
+<td><p>string</p></td>
+<td><p>required</p></td>
+<td><p>ID якорного товара</p></td>
+</tr>
+<tr class="row-even"><td><p>limit</p></td>
+<td><p>integer</p></td>
+<td><p>5</p></td>
+<td><p>Сколько товаров вернуть
+(max: 20)</p></td>
+</tr>
+<tr class="row-odd"><td><p>exclude_products</p></td>
+<td><p>array</p></td>
+<td><p>[]</p></td>
+<td><p>Товары не рекомендовать</p></td>
+</tr>
+<tr class="row-even"><td><p>category_filter</p></td>
+<td><p>string</p></td>
+<td><p>null</p></td>
+<td><p>Фильтр по категории</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Examples:</strong></p>
+<p><strong>Простой запрос:</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>https://api.yom.example.com/recommend<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{</span>
+<span class="s1">    &quot;kiosk_id&quot;: &quot;1001&quot;,</span>
+<span class="s1">    &quot;anchor_product_id&quot;: &quot;5000&quot;,</span>
+<span class="s1">    &quot;limit&quot;: 5</span>
+<span class="s1">  }&#39;</span>
+</pre></div>
+</div>
+<p><strong>С исключениями:</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>https://api.yom.example.com/recommend<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{</span>
+<span class="s1">    &quot;kiosk_id&quot;: &quot;1001&quot;,</span>
+<span class="s1">    &quot;anchor_product_id&quot;: &quot;5000&quot;,</span>
+<span class="s1">    &quot;limit&quot;: 5,</span>
+<span class="s1">    &quot;exclude_products&quot;: [&quot;5001&quot;, &quot;5002&quot;]</span>
+<span class="s1">  }&#39;</span>
+</pre></div>
+</div>
+<p><strong>С фильтром категории:</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>https://api.yom.example.com/recommend<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{</span>
+<span class="s1">    &quot;kiosk_id&quot;: &quot;1001&quot;,</span>
+<span class="s1">    &quot;anchor_product_id&quot;: &quot;5000&quot;,</span>
+<span class="s1">    &quot;limit&quot;: 5,</span>
+<span class="s1">    &quot;category_filter&quot;: &quot;Bakery&quot;</span>
+<span class="s1">  }&#39;</span>
+</pre></div>
+</div>
+<p><strong>Response (Success 200):</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;request_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;req_abc12345&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;kiosk_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1001&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;anchor_product_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;5000&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;recommendations&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;product_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;5001&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;product_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Bread&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Bakery&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;price&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">2.99</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;score&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.956</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;reason&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;model&quot;</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;product_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;5002&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;product_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Butter&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Dairy&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;price&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">3.49</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;score&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.923</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;reason&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;model&quot;</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;product_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;5003&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;product_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Cheese&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Dairy&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;price&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">4.99</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;score&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.891</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;reason&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;model&quot;</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;product_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;7001&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;product_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Yogurt&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Dairy&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;price&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">2.49</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;score&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.450</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;reason&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;category_popular&quot;</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;product_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1001&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;product_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Coffee&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Beverages&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;price&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">5.99</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;score&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.320</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;reason&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;global_popular&quot;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;fallback_level&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;execution_time_ms&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.23</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Response Fields:</strong></p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Поле</p></th>
+<th class="head"><p>Тип</p></th>
+<th class="head"><p>Описание</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>status</p></td>
+<td><p>string</p></td>
+<td><p>“success” или “error”</p></td>
+</tr>
+<tr class="row-odd"><td><p>request_id</p></td>
+<td><p>string</p></td>
+<td><p>Unique request ID для логирования</p></td>
+</tr>
+<tr class="row-even"><td><p>kiosk_id</p></td>
+<td><p>string</p></td>
+<td><p>Input kiosk_id</p></td>
+</tr>
+<tr class="row-odd"><td><p>anchor_product_id</p></td>
+<td><p>string</p></td>
+<td><p>Input anchor_product_id</p></td>
+</tr>
+<tr class="row-even"><td><p>recommendations</p></td>
+<td><p>array</p></td>
+<td><p>Array of recommended products</p></td>
+</tr>
+<tr class="row-odd"><td><p>fallback_level</p></td>
+<td><p>int</p></td>
+<td><p>1-4 (1=model, 4=global_popular)</p></td>
+</tr>
+<tr class="row-even"><td><p>execution_time_ms</p></td>
+<td><p>float</p></td>
+<td><p>How long request took (milliseconds)</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Recommendation Object:</strong></p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Поле</p></th>
+<th class="head"><p>Тип</p></th>
+<th class="head"><p>Описание</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>product_id</p></td>
+<td><p>string</p></td>
+<td><p>ID товара</p></td>
+</tr>
+<tr class="row-odd"><td><p>product_name</p></td>
+<td><p>string</p></td>
+<td><p>Название товара</p></td>
+</tr>
+<tr class="row-even"><td><p>category</p></td>
+<td><p>string</p></td>
+<td><p>Категория товара</p></td>
+</tr>
+<tr class="row-odd"><td><p>price</p></td>
+<td><p>float</p></td>
+<td><p>Цена товара (USD)</p></td>
+</tr>
+<tr class="row-even"><td><p>score</p></td>
+<td><p>float</p></td>
+<td><p>Model confidence (0-1)</p></td>
+</tr>
+<tr class="row-odd"><td><p>reason</p></td>
+<td><p>string</p></td>
+<td><p>Why recommended (see below)</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Reason values:</strong></p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>&quot;model&quot;           — Основная модель LightGBM ранжирования
+&quot;mba&quot;             — Market Basket Analysis (правила ассоциаций)
+&quot;category_popular&quot; — Популярные товары в категории якоря
+&quot;global_popular&quot;  — Глобально популярные товары
+</pre></div>
+</div>
+</section>
+<section id="id2">
+<h3>Error Responses<a class="headerlink" href="#id2" title="Link to this heading"></a></h3>
+<p><strong>400 Bad Request:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;error&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Missing kiosk_id or anchor_product_id&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;request_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;req_abc12345&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>400 Invalid Parameters:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;error&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;limit must be between 1 and 20&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;request_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;req_abc12345&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>404 Not Found:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;error&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;kiosk_id 99999 not found in catalog&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;request_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;req_abc12345&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>500 Internal Server Error:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;error&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Internal server error&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;request_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;req_abc12345&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="id3">
+<h2>Здоровье и статус<a class="headerlink" href="#id3" title="Link to this heading"></a></h2>
+<section id="id4">
+<h3>GET /health<a class="headerlink" href="#id4" title="Link to this heading"></a></h3>
+<p>Проверить здоровье API.</p>
+<p><strong>Response (200):</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;healthy&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;timestamp&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2025-01-15T10:30:00Z&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;model_version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;v1.0&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;predictions_loaded&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="id5">
+<h3>GET /metrics<a class="headerlink" href="#id5" title="Link to this heading"></a></h3>
+<p>Получить метрики за последний час.</p>
+<p><strong>Response (200):</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;total_requests&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;avg_latency_ms&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.23</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;p99_latency_ms&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">5.67</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;error_rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.001</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;fallback_distribution&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.85</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;mba&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.10</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;category_popular&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.04</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;global_popular&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.01</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="id6">
+<h2>Python Client<a class="headerlink" href="#id6" title="Link to this heading"></a></h2>
+<p><strong>Installation:</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>yom-recommendations-client
+</pre></div>
+</div>
+<p><strong>Usage:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">yom_recommendations</span><span class="w"> </span><span class="kn">import</span> <span class="n">YOMClient</span>
+
+<span class="n">client</span> <span class="o">=</span> <span class="n">YOMClient</span><span class="p">(</span>
+    <span class="n">api_url</span><span class="o">=</span><span class="s2">&quot;https://api.yom.example.com&quot;</span><span class="p">,</span>
+    <span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;your_api_key&quot;</span>  <span class="c1"># optional</span>
+<span class="p">)</span>
+
+<span class="c1"># Get recommendations</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">get_recommendations</span><span class="p">(</span>
+    <span class="n">kiosk_id</span><span class="o">=</span><span class="s2">&quot;1001&quot;</span><span class="p">,</span>
+    <span class="n">anchor_product_id</span><span class="o">=</span><span class="s2">&quot;5000&quot;</span><span class="p">,</span>
+    <span class="n">limit</span><span class="o">=</span><span class="mi">5</span>
+<span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Got </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="s1">&#39;recommendations&#39;</span><span class="p">])</span><span class="si">}</span><span class="s2"> recommendations&quot;</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">rec</span> <span class="ow">in</span> <span class="n">result</span><span class="p">[</span><span class="s1">&#39;recommendations&#39;</span><span class="p">]:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  - </span><span class="si">{</span><span class="n">rec</span><span class="p">[</span><span class="s1">&#39;product_name&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> (score: </span><span class="si">{</span><span class="n">rec</span><span class="p">[</span><span class="s1">&#39;score&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="curl-examples">
+<h2>cURL Examples<a class="headerlink" href="#curl-examples" title="Link to this heading"></a></h2>
+<p><strong>Basic request:</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>https://api.yom.example.com/recommend<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{</span>
+<span class="s1">    &quot;kiosk_id&quot;: &quot;1001&quot;,</span>
+<span class="s1">    &quot;anchor_product_id&quot;: &quot;5000&quot;,</span>
+<span class="s1">    &quot;limit&quot;: 3</span>
+<span class="s1">  }&#39;</span>
+</pre></div>
+</div>
+<p><strong>With authentication:</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>https://api.yom.example.com/recommend<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer YOUR_API_KEY&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{</span>
+<span class="s1">    &quot;kiosk_id&quot;: &quot;1001&quot;,</span>
+<span class="s1">    &quot;anchor_product_id&quot;: &quot;5000&quot;</span>
+<span class="s1">  }&#39;</span>
+</pre></div>
+</div>
+<p><strong>With exclude list:</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>https://api.yom.example.com/recommend<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{</span>
+<span class="s1">    &quot;kiosk_id&quot;: &quot;1001&quot;,</span>
+<span class="s1">    &quot;anchor_product_id&quot;: &quot;5000&quot;,</span>
+<span class="s1">    &quot;exclude_products&quot;: [&quot;5001&quot;, &quot;5002&quot;, &quot;5003&quot;]</span>
+<span class="s1">  }&#39;</span>
+</pre></div>
+</div>
+<p><strong>Batch request (multiple kiosks):</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="k">for</span><span class="w"> </span>kiosk<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="m">1001</span><span class="w"> </span><span class="m">1002</span><span class="w"> </span><span class="m">1003</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">  </span>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>https://api.yom.example.com/recommend<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;kiosk_id&quot;: &quot;&#39;</span><span class="nv">$kiosk</span><span class="s1">&#39;&quot;, &quot;anchor_product_id&quot;: &quot;5000&quot;}&#39;</span>
+<span class="k">done</span>
+</pre></div>
+</div>
+</section>
+<section id="javascript-example">
+<h2>JavaScript Example<a class="headerlink" href="#javascript-example" title="Link to this heading"></a></h2>
+<div class="highlight-javascript notranslate"><div class="highlight"><pre><span></span><span class="kd">const</span><span class="w"> </span><span class="nx">apiUrl</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;https://api.yom.example.com/recommend&#39;</span><span class="p">;</span>
+
+<span class="k">async</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">getRecommendations</span><span class="p">(</span><span class="nx">kioskId</span><span class="p">,</span><span class="w"> </span><span class="nx">anchorProductId</span><span class="p">,</span><span class="w"> </span><span class="nx">limit</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">5</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">response</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">fetch</span><span class="p">(</span><span class="nx">apiUrl</span><span class="p">,</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">method</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;POST&#39;</span><span class="p">,</span>
+<span class="w">        </span><span class="nx">headers</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="s1">&#39;Content-Type&#39;</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;application/json&#39;</span><span class="p">,</span>
+<span class="w">        </span><span class="p">},</span>
+<span class="w">        </span><span class="nx">body</span><span class="o">:</span><span class="w"> </span><span class="nb">JSON</span><span class="p">.</span><span class="nx">stringify</span><span class="p">({</span>
+<span class="w">            </span><span class="nx">kiosk_id</span><span class="o">:</span><span class="w"> </span><span class="nx">kioskId</span><span class="p">,</span>
+<span class="w">            </span><span class="nx">anchor_product_id</span><span class="o">:</span><span class="w"> </span><span class="nx">anchorProductId</span><span class="p">,</span>
+<span class="w">            </span><span class="nx">limit</span><span class="o">:</span><span class="w"> </span><span class="nx">limit</span>
+<span class="w">        </span><span class="p">})</span>
+<span class="w">    </span><span class="p">});</span>
+
+<span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">data</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">response</span><span class="p">.</span><span class="nx">json</span><span class="p">();</span>
+
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">data</span><span class="p">.</span><span class="nx">status</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="s1">&#39;success&#39;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="nx">data</span><span class="p">.</span><span class="nx">error</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">data</span><span class="p">.</span><span class="nx">recommendations</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="c1">// Usage</span>
+<span class="nx">getRecommendations</span><span class="p">(</span><span class="s1">&#39;1001&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;5000&#39;</span><span class="p">,</span><span class="w"> </span><span class="mf">5</span><span class="p">)</span>
+<span class="w">    </span><span class="p">.</span><span class="nx">then</span><span class="p">(</span><span class="nx">recommendations</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">recommendations</span><span class="p">.</span><span class="nx">forEach</span><span class="p">(</span><span class="nx">rec</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="sb">`</span><span class="si">${</span><span class="nx">rec</span><span class="p">.</span><span class="nx">product_name</span><span class="si">}</span><span class="sb">: $</span><span class="si">${</span><span class="nx">rec</span><span class="p">.</span><span class="nx">price</span><span class="si">}</span><span class="sb">`</span><span class="p">);</span>
+<span class="w">        </span><span class="p">});</span>
+<span class="w">    </span><span class="p">})</span>
+<span class="w">    </span><span class="p">.</span><span class="k">catch</span><span class="p">(</span><span class="nx">error</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">(</span><span class="s1">&#39;Error:&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">error</span><span class="p">));</span>
+</pre></div>
+</div>
+</section>
+<section id="rate-limiting">
+<h2>Rate Limiting<a class="headerlink" href="#rate-limiting" title="Link to this heading"></a></h2>
+<p>API имеет rate limits для предотвращения abuse:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>Per-IP rate limit: 1000 requests per minute
+Per-API-key limit: 10000 requests per minute
+</pre></div>
+</div>
+<p><strong>Response headers при rate limit:</strong></p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>X-RateLimit-Limit: 1000
+X-RateLimit-Remaining: 999
+X-RateLimit-Reset: 1610700000
+
+429 Too Many Requests
+</pre></div>
+</div>
+<p><strong>Backoff strategy:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">backoff_request</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">max_retries</span><span class="o">=</span><span class="mi">5</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">attempt</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_retries</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">429</span><span class="p">:</span>
+                <span class="n">wait_time</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">**</span> <span class="n">attempt</span>  <span class="c1"># Exponential backoff</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Rate limited, waiting </span><span class="si">{</span><span class="n">wait_time</span><span class="si">}</span><span class="s2">s...&quot;</span><span class="p">)</span>
+                <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">wait_time</span><span class="p">)</span>
+                <span class="k">continue</span>
+            <span class="k">return</span> <span class="n">response</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s2">&quot;Max retries exceeded&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="versioning">
+<h2>Versioning<a class="headerlink" href="#versioning" title="Link to this heading"></a></h2>
+<p>API версионируется через URL:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/v1/recommend    ← Current version
+/v2/recommend    ← Future version (when available)
+</pre></div>
+</div>
+<p><strong>Deprecation policy:</strong></p>
+<ul class="simple">
+<li><p>Старая версия поддерживается 6 месяцев после релиза новой</p></li>
+<li><p>Уведомления за месяц до deprecation</p></li>
+<li><p>Migration guide при релизе новой версии</p></li>
+</ul>
+</section>
+<section id="id7">
+<h2>Что дальше?<a class="headerlink" href="#id7" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="serving.html"><span class="doc">Serving (Recommendation Delivery)</span></a> — как API реализован</p></li>
+<li><p><a class="reference internal" href="troubleshooting.html"><span class="doc">Troubleshooting</span></a> — решение проблем при использовании API</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="troubleshooting.html" class="btn btn-neutral float-left" title="Troubleshooting" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="glossary.html" class="btn btn-neutral float-right" title="Glossary" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Diana Khutorna.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(false);
+      });
+  </script> 
+
+</body>
+</html>

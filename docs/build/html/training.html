@@ -1,0 +1,248 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Model Training &mdash; YOM Bundle Recommender System 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+    <link rel="canonical" href="https://yom-recommender.readthedocs.io/training.html"/>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Model Artifacts" href="model.html" />
+    <link rel="prev" title="System Architecture" href="architecture.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #2862a3" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            YOM Bundle Recommender System
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Documentation:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">System Architecture</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Model Training</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#entry-points">Entry points</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#run-command">Run command</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#pipeline-stages">Pipeline stages</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#leakage-control">Leakage control</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#why-this-training-design">Why this training design</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#model-method">Model method</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#data-split-method">Data split method</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#candidate-strategy">Candidate strategy</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#regularization-profile">Regularization profile</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#key-hyperparameters">Key hyperparameters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#artifacts">Artifacts</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="model.html">Model Artifacts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="inference.html">Batch Scoring (Inference)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="serving.html">Serving Layer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="deployment.html">Deployment</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #2862a3" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">YOM Bundle Recommender System</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Model Training</li>
+      <li class="wy-breadcrumbs-aside">
+              <a href="https://github.com/dianakhutorna/bundle_recommender/blob/final/docs/source/training.rst" class="fa fa-github"> Edit on GitHub</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="model-training">
+<h1>Model Training<a class="headerlink" href="#model-training" title="Link to this heading"></a></h1>
+<p>This page contains only verified training details from <code class="docutils literal notranslate"><span class="pre">README.md</span></code> and <code class="docutils literal notranslate"><span class="pre">documentation.md</span></code>.</p>
+<section id="entry-points">
+<h2>Entry points<a class="headerlink" href="#entry-points" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Pipeline: <code class="docutils literal notranslate"><span class="pre">training/src/pipelines/training.py</span></code></p></li>
+<li><p>CLI: <code class="docutils literal notranslate"><span class="pre">training/src/scripts/run_training_pipeline.py</span></code></p></li>
+<li><p>Config: <code class="docutils literal notranslate"><span class="pre">training/configs/training_pipeline.yaml</span></code></p></li>
+</ul>
+</section>
+<section id="run-command">
+<h2>Run command<a class="headerlink" href="#run-command" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>./venv/bin/python<span class="w"> </span>-m<span class="w"> </span>training.src.scripts.run_training_pipeline<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--config<span class="w"> </span>training/configs/training_pipeline.yaml
+</pre></div>
+</div>
+</section>
+<section id="pipeline-stages">
+<h2>Pipeline stages<a class="headerlink" href="#pipeline-stages" title="Link to this heading"></a></h2>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>1) Load &amp; preprocess orders
+   - clean columns, cast types, deduplicate
+   - filter to active kiosks
+
+2) Time split
+   - train/val/test = 80% / 10% / 10%
+   - train is split again:
+     * feature_orders (first 70% of train)
+     * label_orders   (last 30% of train)
+
+3) Build baskets
+   - group by (kiosk_id, date) into product lists
+
+4) Generate MBA candidates
+   - compute cooc_count, support, lift, cosine_sim
+   - filters: min_cooc &gt;= 2, min_lift &gt;= 1.2
+   - keep top-100 candidates per anchor
+
+5) Build feature table + labels
+   - cross join kiosks × anchors × top-K candidates
+   - add documented 8 features
+   - add binary labels from co-purchase pairs
+   - sample negatives (max 20 per query)
+
+6) Train LightGBM LambdaRank
+   - objective: lambdarank
+   - validation early stopping (100)
+
+7) Evaluate offline
+   - HitRate@K, NDCG@K, Recall@K, MRR@K, Precision@K
+
+8) Save artifacts
+   - lgbm_ranker.txt
+   - lgbm_ranker.features.json
+</pre></div>
+</div>
+</section>
+<section id="leakage-control">
+<h2>Leakage control<a class="headerlink" href="#leakage-control" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">train_label_ratio</span></code> (default <code class="docutils literal notranslate"><span class="pre">0.3</span></code>) separates feature construction and labels in time, preventing overlap between periods used for features and periods used for target events.</p>
+</section>
+<section id="why-this-training-design">
+<h2>Why this training design<a class="headerlink" href="#why-this-training-design" title="Link to this heading"></a></h2>
+<section id="model-method">
+<h3>Model method<a class="headerlink" href="#model-method" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>LightGBM with <code class="docutils literal notranslate"><span class="pre">lambdarank</span></code> is used because the task is ranking candidates per query <code class="docutils literal notranslate"><span class="pre">(kiosk,</span> <span class="pre">anchor)</span></code>.</p></li>
+<li><p>Offline metrics are rank-based (NDCG/HitRate/Recall/MRR/Precision&#64;K), so list ranking objective is aligned with evaluation.</p></li>
+</ul>
+</section>
+<section id="data-split-method">
+<h3>Data split method<a class="headerlink" href="#data-split-method" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Time-based split is used instead of random split to reflect production chronology.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">train_label_ratio</span></code> separates feature period and label period to reduce leakage risk.</p></li>
+</ul>
+</section>
+<section id="candidate-strategy">
+<h3>Candidate strategy<a class="headerlink" href="#candidate-strategy" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Candidate generation uses MBA statistics with filters <code class="docutils literal notranslate"><span class="pre">min_cooc</span> <span class="pre">&gt;=</span> <span class="pre">2</span></code> and <code class="docutils literal notranslate"><span class="pre">min_lift</span> <span class="pre">&gt;=</span> <span class="pre">1.2</span></code>.</p></li>
+<li><p>Top-K candidate cap (<code class="docutils literal notranslate"><span class="pre">top_k=100</span></code> in training) keeps ranking space manageable before model scoring.</p></li>
+</ul>
+</section>
+<section id="regularization-profile">
+<h3>Regularization profile<a class="headerlink" href="#regularization-profile" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Documented hyperparameters are conservative (e.g., limited depth/leaves and non-zero L1/L2).</p></li>
+<li><p>This matches the stated goal of controlling overfitting on sparse co-purchase data.</p></li>
+</ul>
+</section>
+</section>
+<section id="key-hyperparameters">
+<h2>Key hyperparameters<a class="headerlink" href="#key-hyperparameters" title="Link to this heading"></a></h2>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">lgbm_params</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">learning_rate</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.02</span>
+<span class="w">  </span><span class="nt">num_leaves</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">15</span>
+<span class="w">  </span><span class="nt">max_depth</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span>
+<span class="w">  </span><span class="nt">min_data_in_leaf</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1000</span>
+<span class="w">  </span><span class="nt">min_gain_to_split</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.5</span>
+<span class="w">  </span><span class="nt">lambda_l1</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2.0</span>
+<span class="w">  </span><span class="nt">lambda_l2</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10.0</span>
+<span class="w">  </span><span class="nt">feature_fraction</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.55</span>
+<span class="w">  </span><span class="nt">bagging_fraction</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.6</span>
+<span class="w">  </span><span class="nt">bagging_freq</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</pre></div>
+</div>
+</section>
+<section id="artifacts">
+<h2>Artifacts<a class="headerlink" href="#artifacts" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">training/models/lgbm_ranker.txt</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">training/models/lgbm_ranker.features.json</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">training/data/interim/orders_sample.parquet</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">logs/training_*.log</span></code></p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="architecture.html" class="btn btn-neutral float-left" title="System Architecture" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="model.html" class="btn btn-neutral float-right" title="Model Artifacts" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Diana Khutorna.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(false);
+      });
+  </script> 
+
+</body>
+</html>
