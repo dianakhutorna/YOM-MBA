@@ -93,18 +93,9 @@ LightGBM for ranking
 
 The ranker uses LightGBM with a ``lambdarank`` objective because the task is ranking candidates within each query group. This objective matches the evaluation setup better than classification or regression losses, and the model remains compact and fast at inference time.
 
-Separation of retrieval and ranking
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Candidate generation and final scoring are kept as separate stages. This makes the pipeline easier to debug, allows direct comparison between the MBA baseline and the final ranker, and keeps the scoring space manageable before model prediction.
 
 Technology Choices
 ------------------
-
-ZenML
-~~~~~
-
-ZenML is used as the pipeline orchestration framework. It provides clear step boundaries, reproducible pipeline runs, and caching during development, which helps avoid re-running expensive data preparation and training steps.
 
 Polars instead of Pandas
 ~~~~~~~~~~~~~~~~~~~~~~~~
