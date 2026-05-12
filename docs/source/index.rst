@@ -42,7 +42,7 @@ The system identifies the best products to recommend as bundles paired with spec
 
 .. toctree::
    :maxdepth: 3
-   :caption: Documentation:
+   :caption: Contents
 
    quickstart
    architecture
